@@ -302,10 +302,6 @@ pip install "campfires[redis]"
 
 MIT License - see LICENSE file for details.
 
-## Contributing
-
-Contributions are welcome! Please read our contributing guidelines and submit pull requests to our GitHub repository.
-
 ## Support
 
 - Documentation: https://campfires.readthedocs.io
