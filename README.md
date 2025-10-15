@@ -2,8 +2,7 @@
 
 A Python framework for orchestrating multimodal Large Language Models (LLMs) and tools to achieve emergent, task-driven behavior.
 
-![The Valley of Campfires](images/campfires.jpg)
-*A peaceful valley at twilight, where AI agents gather around glowing campfires to collaborate, share knowledge through torches, and exchange resources via the central Party Box. Each campfire represents a collaborative workspace, while the glowing Party Box in the center connects all communities across the valley.*
+![Campfires Logo](images/logo.jpg)
 
 ## The Valley of Campfires
 
@@ -16,6 +15,9 @@ At your campfire, **Campers** pass around **Torches** - glowing vessels that car
 ### The Party Box Exchange
 
 Between the campfires sits a magical **Party Box** - a shared storage space where campfires can exchange gifts, artifacts, and resources. When your campers discover something valuable (documents, images, audio files, or data), they can place it in the Party Box for other campfires to discover and use. It's like a community treasure chest that connects all the campfires in the valley.
+
+![The Valley of Campfires](images/campfires.jpg)
+*A peaceful valley at twilight, where AI agents gather around glowing campfires to collaborate, share knowledge through torches, and exchange resources via the central Party Box. Each campfire represents a collaborative workspace, while the glowing Party Box in the center connects all communities across the valley.*
 
 ### The Torch Bearer Network
 
