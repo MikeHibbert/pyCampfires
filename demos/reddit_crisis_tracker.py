@@ -146,7 +146,7 @@ class CrisisDetectionCamper(Camper, LLMCamperMixin):
         
         return output_torch
     
-    async def override_prompt(self, raw_prompt: str) -> dict:
+    async def override_prompt(self, raw_prompt: str, system_prompt: Optional[str] = None) -> dict:
         """Override the base prompt for crisis detection."""
         try:
             print(f"🔍 CrisisDetectionCamper processing...")
@@ -281,14 +281,17 @@ class ResponseGeneratorCamper(Camper, LLMCamperMixin):
         self.current_torch = input_torch
         return await super().process(input_torch)
     
-    async def override_prompt(self, raw_prompt: str) -> dict:
+    async def override_prompt(self, raw_prompt: str, system_prompt: Optional[str] = None) -> dict:
         """Override the base prompt for response generation."""
+        default_system = "You are a compassionate mental health support specialist. Generate helpful, supportive responses."
+        final_system = system_prompt if system_prompt else default_system
+        
         return {
-            "system": "You are a compassionate mental health support specialist. Generate helpful, supportive responses.",
+            "system": final_system,
             "user": f"{raw_prompt}\nGenerate a supportive response for this crisis situation."
         }
     
-    async def override_prompt(self, raw_prompt: str) -> Dict[str, Any]:
+    async def override_prompt(self, raw_prompt: str, system_prompt: Optional[str] = None) -> Dict[str, Any]:
         """Override the base prompt for response generation."""
         try:
             print(f"💬 ResponseGeneratorCamper processing...")
@@ -379,14 +382,17 @@ class CrisisLoggerCamper(Camper):
         self.current_torch = input_torch
         return await super().process(input_torch)
     
-    async def override_prompt(self, raw_prompt: str) -> dict:
+    async def override_prompt(self, raw_prompt: str, system_prompt: Optional[str] = None) -> dict:
         """Override the base prompt for logging."""
+        default_system = "You are a crisis event logger."
+        final_system = system_prompt if system_prompt else default_system
+        
         return {
-            "system": "You are a crisis event logger.",
+            "system": final_system,
             "user": raw_prompt
         }
     
-    async def override_prompt(self, raw_prompt: str) -> Dict[str, Any]:
+    async def override_prompt(self, raw_prompt: str, system_prompt: Optional[str] = None) -> Dict[str, Any]:
         """Override the base prompt for crisis logging."""
         try:
             print(f"📝 CrisisLoggerCamper processing...")

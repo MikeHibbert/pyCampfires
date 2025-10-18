@@ -10,6 +10,7 @@ import json
 import sys
 import os
 from datetime import datetime
+from typing import Optional
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -23,7 +24,7 @@ from campfires.utils import generate_torch_id
 class TextAnalyzerCamper(Camper):
     """Simple camper that analyzes text content."""
     
-    async def override_prompt(self, raw_prompt: str) -> dict:
+    async def override_prompt(self, raw_prompt: str, system_prompt: Optional[str] = None) -> dict:
         """Override the base prompt for text analysis."""
         return {
             "system": "You are a text analyzer that identifies keywords and sentiment.",
@@ -63,10 +64,13 @@ class TextAnalyzerCamper(Camper):
 class SummarizerCamper(Camper):
     """Camper that creates summaries of text."""
     
-    async def override_prompt(self, raw_prompt: str) -> dict:
+    async def override_prompt(self, raw_prompt: str, system_prompt: Optional[str] = None) -> dict:
         """Override the base prompt for summarization."""
+        default_system = "You are a text summarizer that creates concise summaries."
+        final_system = system_prompt if system_prompt else default_system
+        
         return {
-            "system": "You are a text summarizer that creates concise summaries.",
+            "system": final_system,
             "user": f"{raw_prompt}\nCreate a concise summary of the following text."
         }
     
@@ -104,10 +108,13 @@ class LoggerCamper(Camper):
         super().__init__(party_box, config)
         self.state_manager = state_manager
     
-    async def override_prompt(self, raw_prompt: str) -> dict:
+    async def override_prompt(self, raw_prompt: str, system_prompt: Optional[str] = None) -> dict:
         """Override the base prompt for logging."""
+        default_system = "You are a logging system that records processing results."
+        final_system = system_prompt if system_prompt else default_system
+        
         return {
-            "system": "You are a logging system that records processing results.",
+            "system": final_system,
             "user": f"{raw_prompt}\nLog the processing results."
         }
     

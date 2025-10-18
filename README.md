@@ -33,6 +33,10 @@ Welcome to the valley. Pull up a log, grab a torch, and let's build something am
 
 - **Modular Architecture**: Build complex AI workflows using composable "Campers" (AI agents)
 - **LLM Integration**: Built-in support for OpenRouter and other LLM providers
+- **Zeitgeist**: Internet knowledge and opinion mining for informed campers
+- **Action Planning**: Generate structured action plans with priorities and timelines
+- **Professional Character System**: Define unique personalities and perspectives with professional traits
+- **HTML Reporting**: Generate detailed reports with character responses and action plans
 - **MCP Protocol**: Model Context Protocol for inter-agent communication
 - **Storage Management**: Flexible "Party Box" system for asset storage
 - **State Management**: Persistent state tracking with SQLite backend
@@ -165,6 +169,171 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
+### LLM-Enabled Campers with Custom Prompts
+
+The framework supports advanced LLM integration through the `override_prompt` method, allowing campers to customize their LLM interactions:
+
+```python
+import asyncio
+from campfires import Camper, Torch, OpenRouterConfig, LLMCamperMixin
+
+class ExpertAnalyzer(Camper, LLMCamperMixin):
+    def __init__(self, name: str, expertise: str):
+        super().__init__(name)
+        self.expertise = expertise
+        
+    def override_prompt(self, torch: Torch) -> dict:
+        """Custom prompt generation with LLM call"""
+        try:
+            # Create enhanced prompt based on expertise
+            enhanced_prompt = f"""
+            You are an expert {self.expertise}. Analyze the following information 
+            and provide professional insights:
+            
+            Input: {torch.claim}
+            
+            Please provide:
+            1. Key insights from your {self.expertise} perspective
+            2. Potential concerns or opportunities
+            3. Recommended next steps
+            """
+            
+            # Make LLM call directly in override_prompt
+            response = self.llm_completion_with_mcp(enhanced_prompt)
+            
+            return {
+                "claim": response,
+                "confidence": 0.85,
+                "metadata": {
+                    "expertise": self.expertise,
+                    "analysis_type": "expert_review"
+                }
+            }
+        except Exception as e:
+            return {
+                "claim": f"Analysis failed: {str(e)}",
+                "confidence": 0.1,
+                "metadata": {"error": True}
+            }
+
+async def main():
+    # Setup LLM configuration
+    config = OpenRouterConfig(api_key="your-openrouter-api-key")
+    
+    # Create expert campers
+    security_expert = ExpertAnalyzer("security-expert", "cybersecurity")
+    security_expert.setup_llm(config)
+    
+    finance_expert = ExpertAnalyzer("finance-expert", "financial analysis")
+    finance_expert.setup_llm(config)
+    
+    # Create campfire and add experts
+    campfire = Campfire("expert-analysis")
+    campfire.add_camper(security_expert)
+    campfire.add_camper(finance_expert)
+    
+    await campfire.start()
+    
+    # Analyze a business proposal
+    torch = Torch(claim="We're considering implementing a new payment system")
+    await campfire.send_torch(torch)
+    
+    await campfire.stop()
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+### Team Collaboration with RAG Integration
+
+Build intelligent team members that can access and reason over document collections:
+
+```python
+import asyncio
+from campfires import Camper, Torch, OpenRouterConfig, LLMCamperMixin
+
+class TeamMember(Camper, LLMCamperMixin):
+    def __init__(self, name: str, role: str, rag_system_prompt: str):
+        super().__init__(name)
+        self.role = role
+        self.rag_system_prompt = rag_system_prompt
+        
+    def override_prompt(self, torch: Torch) -> dict:
+        """Generate responses using RAG-enhanced prompts"""
+        try:
+            # Combine RAG context with user question
+            enhanced_prompt = f"""
+            {self.rag_system_prompt}
+            
+            Role: {self.role}
+            Question: {torch.claim}
+            
+            Please provide a detailed response based on your role and the 
+            available context. Include specific recommendations and actionable insights.
+            """
+            
+            # Make LLM call with enhanced context
+            response = self.llm_completion_with_mcp(enhanced_prompt)
+            
+            return {
+                "claim": response,
+                "confidence": 0.9,
+                "metadata": {
+                    "role": self.role,
+                    "rag_enhanced": True,
+                    "response_type": "team_recommendation"
+                }
+            }
+        except Exception as e:
+            return {
+                "claim": f"Unable to provide recommendation: {str(e)}",
+                "confidence": 0.1,
+                "metadata": {"error": True, "role": self.role}
+            }
+
+async def main():
+    # Setup LLM configuration
+    config = OpenRouterConfig(api_key="your-openrouter-api-key")
+    
+    # RAG system prompt with document context
+    rag_context = """
+    You have access to comprehensive documentation about our tax application system.
+    The system handles tax calculations, user management, and compliance reporting.
+    Key components include: authentication service, calculation engine, reporting module.
+    """
+    
+    # Create team members with different roles
+    backend_engineer = TeamMember(
+        "backend-engineer", 
+        "Senior Backend Engineer",
+        rag_context
+    )
+    backend_engineer.setup_llm(config)
+    
+    devops_engineer = TeamMember(
+        "devops-engineer",
+        "Senior DevOps Engineer", 
+        rag_context
+    )
+    devops_engineer.setup_llm(config)
+    
+    # Create team campfire
+    team_campfire = Campfire("development-team")
+    team_campfire.add_camper(backend_engineer)
+    team_campfire.add_camper(devops_engineer)
+    
+    await team_campfire.start()
+    
+    # Ask for team input on a technical decision
+    question = Torch(claim="How should we implement user authentication for the new tax module?")
+    await team_campfire.send_torch(question)
+    
+    await team_campfire.stop()
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
 ## Core Concepts
 
 ### Torches - The Light of Knowledge
@@ -192,6 +361,38 @@ class WeatherCamper(Camper):
         return Torch(claim=f"Weather insight: {torch.claim}")
 ```
 
+### LLMCamperMixin - Bringing Intelligence to Your Campers
+The **LLMCamperMixin** gives your campers the ability to think and reason using Large Language Models. When you mix this into your camper class, they gain access to powerful AI capabilities:
+
+```python
+from campfires import Camper, LLMCamperMixin, OpenRouterConfig
+
+class IntelligentCamper(Camper, LLMCamperMixin):
+    def __init__(self, name: str):
+        super().__init__(name)
+        # Setup LLM capabilities
+        config = OpenRouterConfig(api_key="your-api-key")
+        self.setup_llm(config)
+    
+    async def process(self, torch: Torch) -> Torch:
+        # Use LLM to analyze the torch content
+        response = await self.llm_completion_with_mcp(
+            f"Analyze this: {torch.claim}"
+        )
+        return Torch(claim=response, confidence=0.9)
+    
+    def override_prompt(self, torch: Torch) -> dict:
+        # Customize how the LLM processes information
+        enhanced_prompt = f"As an expert, analyze: {torch.claim}"
+        llm_response = self.llm_completion_with_mcp(enhanced_prompt)
+        
+        return {
+            "claim": llm_response,
+            "confidence": 0.85,
+            "metadata": {"enhanced": True}
+        }
+```
+
 ### Campfires - The Gathering Circles
 A **Campfire** is where your campers gather to collaborate. It orchestrates the conversation, ensuring torches are passed in the right order and that every camper gets a chance to contribute their expertise:
 
@@ -202,6 +403,30 @@ campfire = Campfire("weather-analysis")
 campfire.add_camper(weather_camper)
 campfire.add_camper(analysis_camper)
 # Now they can work together around the fire
+```
+
+### Zeitgeist - The Valley's Internet Knowledge
+**Zeitgeist** gives your campers the ability to search the internet for current information, opinions, and trends relevant to their roles. Like having a wise oracle at the campfire who can instantly access the collective knowledge of the world:
+
+```python
+from campfires import ZeitgeistCamper, LLMCamperMixin
+
+class ResearchCamper(LLMCamperMixin, Camper):
+    def __init__(self, name: str, role: str, **kwargs):
+        super().__init__(name=name, **kwargs)
+        self.set_role(role)  # 'academic', 'developer', 'journalist', etc.
+        self.enable_zeitgeist()
+    
+    async def research_topic(self, topic: str):
+        # Get current internet knowledge about the topic
+        zeitgeist_info = await self.get_zeitgeist(topic)
+        role_opinions = await self.get_role_opinions(topic)
+        trending_tools = await self.get_trending_tools(topic)
+        return {
+            'zeitgeist': zeitgeist_info,
+            'opinions': role_opinions,
+            'tools': trending_tools
+        }
 ```
 
 ### Party Box - The Valley's Treasure Chest
@@ -257,8 +482,11 @@ config = OpenRouterConfig(
 
 Check out the `demos/` directory for complete examples:
 
+- `hospital_zeitgeist_demo.py`: Healthcare team collaboration with professional AI personas, action planning, and HTML reporting
+- `tax_app_team_demo.py`: Software development team collaboration with RAG integration and LLM-powered recommendations
 - `reddit_crisis_tracker.py`: Crisis detection system for social media
 - `run_demo.py`: Simple demonstration of basic concepts
+- `zeitgeist_demo.py`: Internet knowledge and opinion mining with Zeitgeist
 
 ## Development
 
@@ -289,6 +517,11 @@ mypy campfires/
 ```
 
 ## Optional Dependencies
+
+### Zeitgeist Support
+```bash
+pip install duckduckgo-search beautifulsoup4 requests
+```
 
 ### AWS Support
 ```bash
