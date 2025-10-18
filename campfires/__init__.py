@@ -5,7 +5,7 @@ A Python framework for orchestrating multimodal Large Language Models (LLMs)
 and tools to achieve emergent, task-driven behavior.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __author__ = "Campfires Team"
 
 # Core components

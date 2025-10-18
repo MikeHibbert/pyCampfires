@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "campfires"
-version = "0.1.0"
+version = "0.2.0"
 description = "A Python framework for orchestrating multimodal LLMs and tools"
 readme = "README.md"
 requires-python = ">=3.8"
