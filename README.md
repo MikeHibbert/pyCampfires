@@ -33,10 +33,12 @@ Welcome to the valley. Pull up a log, grab a torch, and let's build something am
 
 - **Modular Architecture**: Build complex AI workflows using composable "Campers" (AI agents)
 - **LLM Integration**: Built-in support for OpenRouter and other LLM providers
+- **Enhanced Orchestration**: Advanced task orchestration with detailed execution stages, problem understanding, approach selection, and quality considerations
+- **Interactive HTML Reports**: Rich HTML reports with expandable sections showing execution stages, RAG information, customization details, and impact analysis
 - **Zeitgeist**: Internet knowledge and opinion mining for informed campers
 - **Action Planning**: Generate structured action plans with priorities and timelines
 - **Professional Character System**: Define unique personalities and perspectives with professional traits
-- **HTML Reporting**: Generate detailed reports with character responses and action plans
+- **RAG Integration**: Retrieval-Augmented Generation with document context and state management
 - **MCP Protocol**: Model Context Protocol for inter-agent communication
 - **Storage Management**: Flexible "Party Box" system for asset storage
 - **State Management**: Persistent state tracking with SQLite backend
@@ -334,6 +336,324 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
+## Using Enhanced Orchestration
+
+The Enhanced Orchestration system provides sophisticated task management with detailed execution tracking. Here's how to leverage these powerful features:
+
+### Basic Enhanced Orchestration Setup
+
+```python
+import asyncio
+from campfires import Campfire, Camper, LLMCamperMixin, OpenRouterConfig
+from campfires.core.enhanced_orchestration import EnhancedOrchestration
+
+class AnalystCamper(Camper, LLMCamperMixin):
+    def __init__(self, name: str, expertise: str):
+        super().__init__(name)
+        self.expertise = expertise
+        
+    async def override_prompt(self, raw_prompt: str, system_prompt: str = None) -> dict:
+        """Enhanced prompt processing with detailed execution tracking"""
+        try:
+            enhanced_prompt = f"""
+            As a {self.expertise} expert, analyze the following:
+            {raw_prompt}
+            
+            Provide detailed insights including:
+            1. Problem understanding
+            2. Approach selection
+            3. Key considerations
+            4. Recommended actions
+            """
+            
+            response = await self.llm_completion(enhanced_prompt)
+            
+            return {
+                "claim": response,
+                "confidence": 0.9,
+                "metadata": {
+                    "expertise": self.expertise,
+                    "analysis_depth": "comprehensive",
+                    "execution_stage": "expert_analysis"
+                }
+            }
+        except Exception as e:
+            return {
+                "claim": f"Analysis failed: {str(e)}",
+                "confidence": 0.1,
+                "metadata": {"error": True}
+            }
+
+async def run_enhanced_orchestration():
+    # Setup LLM configuration
+    config = OpenRouterConfig(api_key="your-api-key")
+    
+    # Create specialized campers
+    business_analyst = AnalystCamper("business-analyst", "business strategy")
+    business_analyst.setup_llm(config)
+    
+    tech_analyst = AnalystCamper("tech-analyst", "technology architecture")
+    tech_analyst.setup_llm(config)
+    
+    # Create campfire with enhanced orchestration
+    campfire = Campfire("strategic-analysis")
+    campfire.add_camper(business_analyst)
+    campfire.add_camper(tech_analyst)
+    
+    # The enhanced orchestration automatically captures:
+    # - Detailed execution stages
+    # - Problem understanding phases
+    # - Approach selection reasoning
+    # - Quality considerations
+    # - Risk assessments
+    
+    await campfire.start()
+    
+    # Process a complex business question
+    from campfires import Torch
+    question = Torch(
+        claim="Should we migrate our legacy system to microservices?",
+        metadata={"priority": "high", "stakeholders": ["engineering", "business"]}
+    )
+    
+    await campfire.send_torch(question)
+    await campfire.stop()
+    
+    # Enhanced HTML report will be generated automatically
+    print("Check the generated HTML report for detailed execution analysis!")
+
+if __name__ == "__main__":
+    asyncio.run(run_enhanced_orchestration())
+```
+
+### Understanding the Interactive HTML Reports
+
+The enhanced orchestration system generates rich HTML reports with expandable sections:
+
+#### **Execution Stages Section** 🔍
+Click the arrow to expand and see:
+- **Problem Understanding**: How campers interpreted the task
+- **Approach Selection**: Why specific strategies were chosen
+- **Execution Strategy**: Step-by-step implementation details
+- **Quality Considerations**: Quality checks and validations performed
+- **Risk Assessment**: Potential risks identified and mitigation strategies
+
+#### **RAG Information Section** 📚
+Reveals how document context was used:
+- **Document Retrieval**: Which documents were accessed
+- **Context Integration**: How information was incorporated
+- **Relevance Scoring**: Why specific content was prioritized
+- **State Management**: How RAG state evolved during processing
+
+#### **Customization Details Section** ⚙️
+Shows how campers adapted their responses:
+- **Role-Based Adaptations**: How expertise influenced analysis
+- **Personality Integration**: How character traits affected responses
+- **Context Awareness**: How situational factors were considered
+
+#### **Impact Analysis Section** 📊
+Provides outcome assessment:
+- **Decision Quality**: Assessment of recommendation strength
+- **Confidence Levels**: Reliability indicators for each insight
+- **Follow-up Actions**: Suggested next steps
+- **Success Metrics**: How to measure implementation success
+
+### Advanced Multi-Camper Orchestration
+
+```python
+import asyncio
+from campfires import Campfire, Camper, LLMCamperMixin, OpenRouterConfig
+
+class SpecializedTeamMember(Camper, LLMCamperMixin):
+    def __init__(self, name: str, role: str, personality: str, concerns: list):
+        super().__init__(name)
+        self.role = role
+        self.personality = personality
+        self.concerns = concerns
+        
+    async def override_prompt(self, raw_prompt: str, system_prompt: str = None) -> dict:
+        """Role-specific analysis with personality integration"""
+        try:
+            role_prompt = f"""
+            You are a {self.role} with the following personality: {self.personality}
+            Your primary concerns are: {', '.join(self.concerns)}
+            
+            Task: {raw_prompt}
+            
+            Provide analysis from your unique perspective, considering:
+            1. How this aligns with your role responsibilities
+            2. What concerns you might have
+            3. What opportunities you see
+            4. Your recommended approach
+            """
+            
+            response = await self.llm_completion(role_prompt)
+            
+            return {
+                "claim": response,
+                "confidence": 0.85,
+                "metadata": {
+                    "role": self.role,
+                    "personality_influence": self.personality,
+                    "key_concerns": self.concerns,
+                    "perspective_type": "role_specialized"
+                }
+            }
+        except Exception as e:
+            return {
+                "claim": f"Unable to provide {self.role} perspective: {str(e)}",
+                "confidence": 0.1,
+                "metadata": {"error": True, "role": self.role}
+            }
+
+async def run_team_orchestration():
+    config = OpenRouterConfig(api_key="your-api-key")
+    
+    # Create diverse team members
+    team_members = [
+        SpecializedTeamMember(
+            "sarah-pm", 
+            "Project Manager",
+            "detail-oriented and deadline-focused",
+            ["timeline adherence", "resource allocation", "stakeholder communication"]
+        ),
+        SpecializedTeamMember(
+            "alex-dev",
+            "Senior Developer", 
+            "pragmatic and quality-focused",
+            ["code maintainability", "technical debt", "performance optimization"]
+        ),
+        SpecializedTeamMember(
+            "jordan-ux",
+            "UX Designer",
+            "user-centric and creative",
+            ["user experience", "accessibility", "design consistency"]
+        )
+    ]
+    
+    # Setup LLM for each team member
+    for member in team_members:
+        member.setup_llm(config)
+    
+    # Create collaborative campfire
+    team_campfire = Campfire("product-development-team")
+    for member in team_members:
+        team_campfire.add_camper(member)
+    
+    await team_campfire.start()
+    
+    # Collaborative decision making
+    from campfires import Torch
+    decision = Torch(
+        claim="We need to redesign our mobile app's onboarding flow to improve user retention",
+        metadata={
+            "urgency": "high",
+            "impact": "user_retention",
+            "timeline": "6_weeks"
+        }
+    )
+    
+    await team_campfire.send_torch(decision)
+    await team_campfire.stop()
+    
+    print("Team collaboration complete! Check the HTML report for detailed insights from each perspective.")
+
+if __name__ == "__main__":
+    asyncio.run(run_team_orchestration())
+```
+
+### Leveraging RAG Integration
+
+```python
+import asyncio
+from campfires import Campfire, Camper, LLMCamperMixin, OpenRouterConfig
+
+class RAGEnabledCamper(Camper, LLMCamperMixin):
+    def __init__(self, name: str, domain: str, rag_context: str):
+        super().__init__(name)
+        self.domain = domain
+        self.rag_context = rag_context
+        
+    async def override_prompt(self, raw_prompt: str, system_prompt: str = None) -> dict:
+        """RAG-enhanced analysis with document context"""
+        try:
+            rag_enhanced_prompt = f"""
+            Domain Expertise: {self.domain}
+            
+            Available Context:
+            {self.rag_context}
+            
+            Question: {raw_prompt}
+            
+            Using the provided context and your {self.domain} expertise:
+            1. Identify relevant information from the context
+            2. Apply domain-specific analysis
+            3. Provide evidence-based recommendations
+            4. Highlight any gaps in available information
+            """
+            
+            response = await self.llm_completion(rag_enhanced_prompt)
+            
+            return {
+                "claim": response,
+                "confidence": 0.92,
+                "metadata": {
+                    "domain": self.domain,
+                    "rag_enhanced": True,
+                    "context_utilized": True,
+                    "evidence_based": True
+                }
+            }
+        except Exception as e:
+            return {
+                "claim": f"RAG analysis failed: {str(e)}",
+                "confidence": 0.1,
+                "metadata": {"error": True, "domain": self.domain}
+            }
+
+async def run_rag_orchestration():
+    config = OpenRouterConfig(api_key="your-api-key")
+    
+    # Sample RAG context (in practice, this would come from document retrieval)
+    financial_context = """
+    Company Financial Overview:
+    - Q3 Revenue: $2.4M (15% growth)
+    - Operating Expenses: $1.8M
+    - Cash Flow: Positive $600K
+    - Key Investments: R&D (30%), Marketing (25%), Operations (45%)
+    - Market Position: Growing market share in fintech sector
+    """
+    
+    # Create RAG-enabled camper
+    financial_analyst = RAGEnabledCamper(
+        "financial-analyst",
+        "financial analysis",
+        financial_context
+    )
+    financial_analyst.setup_llm(config)
+    
+    # Create campfire
+    analysis_campfire = Campfire("financial-analysis")
+    analysis_campfire.add_camper(financial_analyst)
+    
+    await analysis_campfire.start()
+    
+    # Ask context-aware question
+    from campfires import Torch
+    question = Torch(
+        claim="Should we increase our R&D investment by 50% next quarter?",
+        metadata={"analysis_type": "investment_decision", "timeframe": "Q4"}
+    )
+    
+    await analysis_campfire.send_torch(question)
+    await analysis_campfire.stop()
+    
+    print("RAG-enhanced analysis complete! The HTML report shows how document context influenced the decision.")
+
+if __name__ == "__main__":
+    asyncio.run(run_rag_orchestration())
+```
+
 ## Core Concepts
 
 ### Torches - The Light of Knowledge
@@ -429,6 +749,38 @@ class ResearchCamper(LLMCamperMixin, Camper):
         }
 ```
 
+### Enhanced Orchestration - The Valley's Wisdom
+The **Enhanced Orchestration** system provides sophisticated task management with detailed execution stages. When campers work on complex tasks, the system captures their thought processes, approach selection, and quality considerations:
+
+```python
+from campfires import Campfire, EnhancedOrchestration
+
+# Create a campfire with enhanced orchestration
+campfire = Campfire("strategic-planning")
+orchestration = EnhancedOrchestration(campfire)
+
+# The orchestration system automatically captures:
+# - Problem understanding and analysis
+# - Approach selection and reasoning
+# - Execution strategy and implementation
+# - Quality considerations and risk assessment
+# - RAG context and document integration
+# - Final outcomes and impact analysis
+
+# All this information is available in interactive HTML reports
+# with expandable sections for detailed exploration
+```
+
+### Interactive HTML Reports - Illuminating the Process
+The framework generates rich HTML reports that reveal the inner workings of your campfire collaborations. These reports feature expandable sections that show:
+
+- **Execution Stages**: Step-by-step breakdown of how tasks were approached and executed
+- **RAG Information**: Details about document retrieval and context integration
+- **Customization**: How campers adapted their responses based on their roles and expertise
+- **Impact Analysis**: Assessment of outcomes and recommendations for future improvements
+
+Click the arrow icons in the report headers to expand sections and explore the detailed execution process.
+
 ### Party Box - The Valley's Treasure Chest
 The **Party Box** is the shared storage system where campfires can exchange valuable artifacts - documents, images, audio files, and data. It's like a magical chest that connects all campfires in the valley:
 
@@ -482,11 +834,14 @@ config = OpenRouterConfig(
 
 Check out the `demos/` directory for complete examples:
 
-- `hospital_zeitgeist_demo.py`: Healthcare team collaboration with professional AI personas, action planning, and HTML reporting
-- `tax_app_team_demo.py`: Software development team collaboration with RAG integration and LLM-powered recommendations
+- `sequential_orchestration_demo.py`: Advanced task orchestration with detailed execution stages and interactive HTML reports
+- `hospital_zeitgeist_demo.py`: Healthcare team collaboration with professional AI personas, action planning, and enhanced reporting
+- `tax_app_team_demo.py`: Software development team collaboration with RAG integration, LLM-powered recommendations, and detailed execution analysis
+- `zeitgeist_demo.py`: Internet knowledge and opinion mining with Zeitgeist
 - `reddit_crisis_tracker.py`: Crisis detection system for social media
 - `run_demo.py`: Simple demonstration of basic concepts
-- `zeitgeist_demo.py`: Internet knowledge and opinion mining with Zeitgeist
+
+All demos generate interactive HTML reports with expandable sections showing execution stages, RAG information, and detailed analysis.
 
 ## Development
 

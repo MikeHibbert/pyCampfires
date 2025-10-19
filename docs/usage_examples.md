@@ -1,9 +1,13 @@
 # LLM Integration Usage Examples
 
-This document provides practical, ready-to-use examples of implementing LLM-enabled Campers using the Campfires framework. Each example demonstrates different patterns and use cases for the `LLMCamperMixin` and `override_prompt` functionality.
+This document provides practical, ready-to-use examples of implementing LLM-enabled Campers using the Campfires framework. Each example demonstrates different patterns and use cases for the `LLMCamperMixin` and `override_prompt` functionality, including the new **Enhanced Orchestration** system.
 
 ## Table of Contents
 
+- [Enhanced Orchestration System](#enhanced-orchestration-system) ⭐ **NEW**
+- [Interactive HTML Reports](#interactive-html-reports) ⭐ **NEW**
+- [Sequential Processing with Enhanced Tracking](#sequential-processing-with-enhanced-tracking) ⭐ **NEW**
+- [RAG-Enhanced Team Collaboration](#rag-enhanced-team-collaboration) ⭐ **NEW**
 - [Basic LLM-Enabled Camper](#basic-llm-enabled-camper)
 - [Expert Analysis System](#expert-analysis-system)
 - [Content Generation Pipeline](#content-generation-pipeline)
@@ -14,6 +18,524 @@ This document provides practical, ready-to-use examples of implementing LLM-enab
 - [Customer Support Bot](#customer-support-bot)
 - [Data Analysis Agent](#data-analysis-agent)
 - [Creative Writing Assistant](#creative-writing-assistant)
+
+## Enhanced Orchestration System
+
+The Enhanced Orchestration system provides sophisticated task management with detailed execution tracking and interactive HTML reports. This system automatically captures the thought processes, decision-making strategies, and quality considerations of your AI agents.
+
+### Key Features
+
+- **Detailed Execution Tracking**: Captures problem understanding, approach selection, and quality considerations
+- **Interactive HTML Reports**: Rich reports with expandable sections for deep analysis
+- **RAG Integration Tracking**: Shows how document context influences decisions
+- **Role-Based Analysis**: Tracks how different expertise areas contribute to outcomes
+- **Risk Assessment**: Automatic identification of potential risks and mitigation strategies
+
+### Basic Enhanced Orchestration Example
+
+```python
+import asyncio
+from campfires import Campfire, Camper, LLMCamperMixin, OpenRouterConfig, Torch
+
+class EnhancedAnalyst(Camper, LLMCamperMixin):
+    def __init__(self, name: str, expertise: str, personality: str):
+        super().__init__(name)
+        self.expertise = expertise
+        self.personality = personality
+        
+        config = OpenRouterConfig()
+        self.setup_llm(config)
+    
+    async def override_prompt(self, raw_prompt: str, system_prompt: str = None) -> dict:
+        """Enhanced prompt processing with detailed execution tracking"""
+        try:
+            # The enhanced orchestration system automatically captures:
+            # - Problem understanding phase
+            # - Approach selection reasoning
+            # - Quality considerations
+            # - Risk assessments
+            
+            enhanced_prompt = f"""
+            You are a {self.expertise} expert with the following personality: {self.personality}
+            
+            Task: {raw_prompt}
+            
+            Please provide a comprehensive analysis including:
+            
+            1. PROBLEM UNDERSTANDING:
+               - How you interpret this task
+               - Key assumptions you're making
+               - Critical factors to consider
+            
+            2. APPROACH SELECTION:
+               - Your chosen strategy and why
+               - Alternative approaches considered
+               - Risk-benefit analysis
+            
+            3. DETAILED ANALYSIS:
+               - Step-by-step reasoning
+               - Evidence and supporting information
+               - Quality checks performed
+            
+            4. RISK ASSESSMENT:
+               - Potential risks identified
+               - Mitigation strategies
+               - Confidence level and limitations
+            
+            5. RECOMMENDATIONS:
+               - Specific actionable recommendations
+               - Implementation considerations
+               - Success metrics
+            """
+            
+            response = await self.llm_completion(enhanced_prompt)
+            
+            return {
+                "claim": response,
+                "confidence": 0.9,
+                "metadata": {
+                    "expertise": self.expertise,
+                    "personality": self.personality,
+                    "analysis_depth": "comprehensive",
+                    "execution_stage": "enhanced_analysis",
+                    "quality_assured": True
+                }
+            }
+        except Exception as e:
+            return {
+                "claim": f"Analysis failed: {str(e)}",
+                "confidence": 0.1,
+                "metadata": {"error": True, "expertise": self.expertise}
+            }
+
+async def enhanced_orchestration_example():
+    # Setup LLM configuration
+    config = OpenRouterConfig()
+    
+    # Create enhanced analysts with different expertise
+    business_analyst = EnhancedAnalyst(
+        "business-strategist", 
+        "business strategy", 
+        "analytical and strategic"
+    )
+    business_analyst.setup_llm(config)
+    
+    tech_analyst = EnhancedAnalyst(
+        "tech-architect", 
+        "technology architecture", 
+        "pragmatic and detail-oriented"
+    )
+    tech_analyst.setup_llm(config)
+    
+    risk_analyst = EnhancedAnalyst(
+        "risk-assessor", 
+        "risk management", 
+        "cautious and thorough"
+    )
+    risk_analyst.setup_llm(config)
+    
+    # Create campfire with enhanced orchestration
+    strategic_campfire = Campfire("strategic-analysis")
+    strategic_campfire.add_camper(business_analyst)
+    strategic_campfire.add_camper(tech_analyst)
+    strategic_campfire.add_camper(risk_analyst)
+    
+    await strategic_campfire.start()
+    
+    # Process a complex business decision
+    decision_torch = Torch(
+        claim="Should we migrate our monolithic application to a microservices architecture?",
+        metadata={
+            "priority": "high",
+            "stakeholders": ["engineering", "business", "operations"],
+            "timeline": "6_months",
+            "budget_impact": "significant"
+        }
+    )
+    
+    await strategic_campfire.send_torch(decision_torch)
+    await strategic_campfire.stop()
+    
+    print("Enhanced orchestration complete!")
+    print("Check the generated HTML report for detailed execution analysis.")
+    print("The report includes expandable sections for:")
+    print("- Execution stages and decision-making processes")
+    print("- Quality considerations and risk assessments")
+    print("- Role-based analysis and expertise contributions")
+    print("- Impact analysis and success metrics")
+
+if __name__ == "__main__":
+    asyncio.run(enhanced_orchestration_example())
+```
+
+## Interactive HTML Reports
+
+The Enhanced Orchestration system generates rich, interactive HTML reports that provide deep insights into the decision-making processes of your AI agents.
+
+### Report Structure
+
+Each HTML report contains the following expandable sections:
+
+#### 🔍 Execution Stages
+- **Problem Understanding**: How agents interpreted the task
+- **Approach Selection**: Strategy selection and reasoning
+- **Execution Strategy**: Implementation details and planning
+- **Quality Considerations**: Quality checks and validations
+- **Risk Assessment**: Risk identification and mitigation
+
+#### 📚 RAG Information
+- **Document Retrieval**: Sources accessed and retrieval methods
+- **Context Integration**: How information was synthesized
+- **Relevance Scoring**: Content prioritization rationale
+- **State Management**: Context evolution during processing
+
+#### ⚙️ Customization Details
+- **Role-Based Adaptations**: How expertise influenced analysis
+- **Personality Integration**: Character trait effects on responses
+- **Context Awareness**: Situational factor considerations
+
+#### 📊 Impact Analysis
+- **Decision Quality**: Recommendation strength assessment
+- **Confidence Levels**: Reliability indicators
+- **Follow-up Actions**: Next steps and implementation guidance
+- **Success Metrics**: Measurement criteria and benchmarks
+
+### Accessing Report Features
+
+```python
+# Reports are automatically generated in the project directory
+# Look for files named: {session_name}_report_{timestamp}.html
+
+# Example report navigation:
+# 1. Open the HTML file in your browser
+# 2. Click the arrow (▶) next to each section to expand
+# 3. Explore the detailed execution tracking information
+# 4. Review the metadata and decision rationale
+# 5. Use the color-coded sections for easy navigation
+```
+
+## Sequential Processing with Enhanced Tracking
+
+Demonstrate how tasks flow through multiple processing stages with detailed tracking.
+
+```python
+import asyncio
+from campfires import Campfire, Camper, LLMCamperMixin, OpenRouterConfig, Torch
+
+class SequentialProcessor(Camper, LLMCamperMixin):
+    def __init__(self, name: str, stage: str, focus_area: str):
+        super().__init__(name)
+        self.stage = stage
+        self.focus_area = focus_area
+        
+        config = OpenRouterConfig()
+        self.setup_llm(config)
+    
+    async def override_prompt(self, raw_prompt: str, system_prompt: str = None) -> dict:
+        """Stage-specific processing with enhanced tracking"""
+        try:
+            stage_prompts = {
+                "initial_analysis": f"""
+                STAGE: Initial Analysis
+                FOCUS: {self.focus_area}
+                
+                Task: {raw_prompt}
+                
+                Perform initial analysis focusing on:
+                1. Problem decomposition and understanding
+                2. Key stakeholders and requirements identification
+                3. Initial approach recommendations
+                4. Critical success factors
+                
+                Provide structured analysis with clear reasoning.
+                """,
+                
+                "detailed_processing": f"""
+                STAGE: Detailed Processing
+                FOCUS: {self.focus_area}
+                
+                Building on previous analysis: {raw_prompt}
+                
+                Provide detailed processing including:
+                1. In-depth technical/business analysis
+                2. Resource requirements and constraints
+                3. Implementation roadmap
+                4. Quality assurance considerations
+                
+                Focus on actionable details and practical implementation.
+                """,
+                
+                "risk_assessment": f"""
+                STAGE: Risk Assessment
+                FOCUS: {self.focus_area}
+                
+                Analyzing: {raw_prompt}
+                
+                Conduct comprehensive risk assessment:
+                1. Identify potential risks and challenges
+                2. Assess impact and probability
+                3. Develop mitigation strategies
+                4. Create contingency plans
+                
+                Provide risk matrix and mitigation roadmap.
+                """,
+                
+                "final_validation": f"""
+                STAGE: Final Validation
+                FOCUS: {self.focus_area}
+                
+                Final review of: {raw_prompt}
+                
+                Perform final validation including:
+                1. Quality assurance and compliance check
+                2. Stakeholder alignment verification
+                3. Success metrics definition
+                4. Go/no-go recommendation
+                
+                Provide final recommendation with confidence assessment.
+                """
+            }
+            
+            prompt = stage_prompts.get(self.stage, raw_prompt)
+            response = await self.llm_completion(prompt)
+            
+            return {
+                "claim": response,
+                "confidence": 0.88,
+                "metadata": {
+                    "processing_stage": self.stage,
+                    "focus_area": self.focus_area,
+                    "stage_complete": True,
+                    "next_stage_ready": True
+                }
+            }
+        except Exception as e:
+            return {
+                "claim": f"Stage {self.stage} processing failed: {str(e)}",
+                "confidence": 0.1,
+                "metadata": {"error": True, "stage": self.stage}
+            }
+
+async def sequential_processing_example():
+    config = OpenRouterConfig()
+    
+    # Create sequential processing stages
+    processors = [
+        SequentialProcessor("initial-analyzer", "initial_analysis", "requirements_gathering"),
+        SequentialProcessor("detail-processor", "detailed_processing", "technical_implementation"),
+        SequentialProcessor("risk-assessor", "risk_assessment", "risk_management"),
+        SequentialProcessor("final-validator", "final_validation", "quality_assurance")
+    ]
+    
+    # Setup LLM for each processor
+    for processor in processors:
+        processor.setup_llm(config)
+    
+    # Create sequential processing campfire
+    sequential_campfire = Campfire("sequential-processing")
+    for processor in processors:
+        sequential_campfire.add_camper(processor)
+    
+    await sequential_campfire.start()
+    
+    # Process through all stages
+    project_torch = Torch(
+        claim="Develop a new customer onboarding system for our SaaS platform",
+        metadata={
+            "project_type": "software_development",
+            "complexity": "high",
+            "timeline": "3_months",
+            "team_size": "8_developers"
+        }
+    )
+    
+    await sequential_campfire.send_torch(project_torch)
+    await sequential_campfire.stop()
+    
+    print("Sequential processing complete!")
+    print("The HTML report shows the complete processing pipeline with:")
+    print("- Stage-by-stage execution details")
+    print("- Decision flow and reasoning")
+    print("- Quality gates and validation points")
+    print("- Risk assessment at each stage")
+
+if __name__ == "__main__":
+    asyncio.run(sequential_processing_example())
+```
+
+## RAG-Enhanced Team Collaboration
+
+Combine document context with team expertise for intelligent collaboration.
+
+```python
+import asyncio
+from campfires import Campfire, Camper, LLMCamperMixin, OpenRouterConfig, Torch
+
+class RAGTeamMember(Camper, LLMCamperMixin):
+    def __init__(self, name: str, role: str, expertise: str, rag_context: str):
+        super().__init__(name)
+        self.role = role
+        self.expertise = expertise
+        self.rag_context = rag_context
+        
+        config = OpenRouterConfig()
+        self.setup_llm(config)
+    
+    async def override_prompt(self, raw_prompt: str, system_prompt: str = None) -> dict:
+        """RAG-enhanced team collaboration with role-specific expertise"""
+        try:
+            rag_enhanced_prompt = f"""
+            ROLE: {self.role}
+            EXPERTISE: {self.expertise}
+            
+            AVAILABLE CONTEXT DOCUMENTS:
+            {self.rag_context}
+            
+            TASK: {raw_prompt}
+            
+            As a {self.role} with expertise in {self.expertise}, analyze the task using:
+            
+            1. CONTEXT ANALYSIS:
+               - Relevant information from available documents
+               - How context applies to this specific task
+               - Gaps in available information
+            
+            2. ROLE-SPECIFIC PERSPECTIVE:
+               - Analysis from your professional viewpoint
+               - Key concerns and considerations for your role
+               - Opportunities and recommendations
+            
+            3. EVIDENCE-BASED RECOMMENDATIONS:
+               - Recommendations supported by context documents
+               - Best practices from your expertise area
+               - Implementation guidance
+            
+            4. COLLABORATION INSIGHTS:
+               - How this integrates with other team perspectives
+               - Dependencies and coordination requirements
+               - Success criteria from your role's perspective
+            
+            Provide detailed analysis with clear references to context sources.
+            """
+            
+            response = await self.llm_completion(rag_enhanced_prompt)
+            
+            return {
+                "claim": response,
+                "confidence": 0.92,
+                "metadata": {
+                    "role": self.role,
+                    "expertise": self.expertise,
+                    "rag_enhanced": True,
+                    "context_utilized": True,
+                    "evidence_based": True,
+                    "collaboration_ready": True
+                }
+            }
+        except Exception as e:
+            return {
+                "claim": f"RAG analysis failed for {self.role}: {str(e)}",
+                "confidence": 0.1,
+                "metadata": {"error": True, "role": self.role}
+            }
+
+async def rag_team_collaboration_example():
+    config = OpenRouterConfig()
+    
+    # Sample RAG context (in practice, this would come from document retrieval)
+    company_context = """
+    COMPANY DOCUMENTATION:
+    
+    Technical Architecture:
+    - Microservices architecture with Docker containers
+    - AWS cloud infrastructure with auto-scaling
+    - PostgreSQL primary database, Redis for caching
+    - React frontend with TypeScript
+    - CI/CD pipeline using GitHub Actions
+    
+    Business Requirements:
+    - Customer onboarding must complete within 5 minutes
+    - Support for 10,000+ concurrent users
+    - GDPR and SOC2 compliance required
+    - Multi-tenant architecture with data isolation
+    
+    Current Challenges:
+    - Legacy authentication system causing bottlenecks
+    - Manual verification processes slowing onboarding
+    - Limited analytics on user behavior
+    - Customer support tickets increasing 15% monthly
+    
+    Success Metrics:
+    - Onboarding completion rate > 85%
+    - Time to first value < 10 minutes
+    - Customer satisfaction score > 4.5/5
+    - Support ticket reduction by 30%
+    """
+    
+    # Create RAG-enhanced team members
+    team_members = [
+        RAGTeamMember(
+            "sarah-architect",
+            "Technical Architect",
+            "system design and scalability",
+            company_context
+        ),
+        RAGTeamMember(
+            "mike-product",
+            "Product Manager", 
+            "user experience and business requirements",
+            company_context
+        ),
+        RAGTeamMember(
+            "alex-security",
+            "Security Engineer",
+            "compliance and data protection",
+            company_context
+        ),
+        RAGTeamMember(
+            "jordan-devops",
+            "DevOps Engineer",
+            "infrastructure and deployment",
+            company_context
+        )
+    ]
+    
+    # Setup LLM for each team member
+    for member in team_members:
+        member.setup_llm(config)
+    
+    # Create collaborative campfire
+    team_campfire = Campfire("rag-enhanced-team")
+    for member in team_members:
+        team_campfire.add_camper(member)
+    
+    await team_campfire.start()
+    
+    # Collaborative decision making with RAG context
+    decision_torch = Torch(
+        claim="Design and implement an improved customer onboarding flow that addresses our current challenges",
+        metadata={
+            "project_priority": "high",
+            "timeline": "8_weeks",
+            "budget": "150k",
+            "stakeholders": ["product", "engineering", "security", "operations"]
+        }
+    )
+    
+    await team_campfire.send_torch(decision_torch)
+    await team_campfire.stop()
+    
+    print("RAG-enhanced team collaboration complete!")
+    print("The HTML report demonstrates:")
+    print("- How document context influenced each team member's analysis")
+    print("- Role-specific perspectives and expertise contributions")
+    print("- Evidence-based recommendations with source references")
+    print("- Cross-functional collaboration insights")
+    print("- Context utilization and information synthesis")
+
+if __name__ == "__main__":
+    asyncio.run(rag_team_collaboration_example())
+```
 
 ## Basic LLM-Enabled Camper
 

@@ -211,6 +211,12 @@ class MCPProtocol:
         self._message_handlers['torch'] = self._handle_torch_message
         self._message_handlers['control'] = self._handle_control_message
         self._message_handlers['heartbeat'] = self._handle_heartbeat_message
+        self._message_handlers['llm_request'] = self._handle_llm_request
+        self._message_handlers['chat_request'] = self._handle_chat_request
+        self._message_handlers['llm_response'] = self._handle_llm_response
+        self._message_handlers['chat_response'] = self._handle_chat_response
+        self._message_handlers['llm_error'] = self._handle_llm_error
+        self._message_handlers['chat_error'] = self._handle_chat_error
     
     async def start(self) -> None:
         """Start the MCP protocol."""
@@ -235,7 +241,7 @@ class MCPProtocol:
         # Stop transport
         await self.transport.stop()
     
-    async def send_message(self, channel: str, data: Dict[str, Any], message_type: str = "torch") -> None:
+    async def send_message(self, channel: str, data: Dict[str, Any], message_type: str = "torch", message_id: str = None) -> None:
         """
         Send a message via MCP.
         
@@ -243,11 +249,13 @@ class MCPProtocol:
             channel: Target channel
             data: Message data
             message_type: Type of message
+            message_id: Optional message ID to preserve for request-response flows
         """
         message = MCPMessage(
             channel=channel,
             data=data,
-            message_type=message_type
+            message_type=message_type,
+            message_id=message_id
         )
         
         await self.transport.send(message.to_dict())
@@ -296,9 +304,12 @@ class MCPProtocol:
             message: Message to process
         """
         try:
+            logger.debug(f"Processing message: type={message.message_type}, channel={message.channel}, id={message.message_id}")
+            
             # Handle message based on type
             handler = self._message_handlers.get(message.message_type)
             if handler:
+                logger.debug(f"Found handler for message type: {message.message_type}")
                 await handler(message)
             else:
                 logger.warning(f"No handler for message type: {message.message_type}")
@@ -359,6 +370,165 @@ class MCPProtocol:
             'channel_stats': self.channel_manager.get_stats()
         }
         await self.send_message(channel, {'stats': stats}, 'control')
+    
+    async def _handle_llm_request(self, message: MCPMessage) -> None:
+        """
+        Handle LLM request messages.
+        
+        Args:
+            message: LLM request message
+        """
+        logger.info(f"_handle_llm_request called for message {message.message_id} on channel: {message.channel}")
+        
+        try:
+            # Extract request data
+            prompt = message.data.get('prompt')
+            model = message.data.get('model')
+            max_tokens = message.data.get('max_tokens')
+            temperature = message.data.get('temperature')
+            
+            logger.debug(f"LLM request data: prompt={prompt[:50] if prompt else None}..., model={model}")
+            
+            if not prompt:
+                raise ValueError("LLM request missing required 'prompt' field")
+            
+            # Process LLM request through actual LLM service
+            logger.info(f"Calling _process_llm_request for message {message.message_id}")
+            response = await self._process_llm_request(prompt, model, max_tokens, temperature)
+            
+            # Send response back
+            response_channel = f"{message.channel}_response"
+            response_data = {
+                'response_to': message.message_id,
+                'response': response
+            }
+            
+            logger.info(f"Sending LLM response for message {message.message_id} to channel {response_channel}")
+            await self.send_message(response_channel, response_data, 'llm_response')
+            
+        except Exception as e:
+            logger.error(f"Error handling LLM request: {e}")
+            # Send error response
+            response_channel = f"{message.channel}_response"
+            error_data = {
+                'response_to': message.message_id,
+                'error': str(e)
+            }
+            await self.send_message(response_channel, error_data, 'llm_error')
+    
+    async def _handle_chat_request(self, message: MCPMessage) -> None:
+        """
+        Handle chat request messages.
+        
+        Args:
+            message: Chat request message
+        """
+        logger.debug(f"Handling chat request on channel: {message.channel}")
+        
+        try:
+            # Extract request data
+            messages = message.data.get('messages')
+            model = message.data.get('model')
+            
+            if not messages:
+                raise ValueError("Chat request missing required 'messages' field")
+            
+            # Process chat request through actual LLM service
+            response = await self._process_chat_request(messages, model, **message.data)
+            
+            # Send response back
+            response_channel = f"{message.channel}_response"
+            response_data = {
+                'response_to': message.message_id,
+                'response': response
+            }
+            
+            await self.send_message(response_channel, response_data, 'chat_response')
+            
+        except Exception as e:
+            logger.error(f"Error handling chat request: {e}")
+            # Send error response
+            response_channel = f"{message.channel}_response"
+            error_data = {
+                'response_to': message.message_id,
+                'error': str(e)
+            }
+            await self.send_message(response_channel, error_data, 'chat_error')
+    
+    async def _process_llm_request(self, prompt: str, model: str, max_tokens: int, temperature: float) -> str:
+        """
+        Process an LLM request through the actual LLM service.
+        This method should be overridden by implementations that have access to LLM services.
+        
+        Args:
+            prompt: The prompt to process
+            model: Model to use
+            max_tokens: Maximum tokens
+            temperature: Temperature setting
+            
+        Returns:
+            LLM response text
+        """
+        # This is a placeholder - real implementations should override this
+        # to connect to actual LLM services (OpenRouter, etc.)
+        raise NotImplementedError("LLM processing not implemented. Override _process_llm_request method.")
+    
+    async def _process_chat_request(self, messages: List[Dict], model: str, **kwargs) -> Dict:
+        """
+        Process a chat request through the actual LLM service.
+        This method should be overridden by implementations that have access to LLM services.
+        
+        Args:
+            messages: Chat messages
+            model: Model to use
+            **kwargs: Additional parameters
+            
+        Returns:
+            Chat response data
+        """
+        # This is a placeholder - real implementations should override this
+        # to connect to actual LLM services (OpenRouter, etc.)
+        raise NotImplementedError("Chat processing not implemented. Override _process_chat_request method.")
+    
+    async def _handle_llm_response(self, message: MCPMessage) -> None:
+        """
+        Handle LLM response messages.
+        
+        Args:
+            message: LLM response message
+        """
+        logger.debug(f"Handling LLM response on channel: {message.channel}")
+        # LLM responses are handled by channel subscribers
+    
+    async def _handle_chat_response(self, message: MCPMessage) -> None:
+        """
+        Handle chat response messages.
+        
+        Args:
+            message: Chat response message
+        """
+        logger.debug(f"Handling chat response on channel: {message.channel}")
+        # Chat responses are handled by channel subscribers
+    
+    async def _handle_llm_error(self, message: MCPMessage) -> None:
+        """
+        Handle LLM error messages.
+        
+        Args:
+            message: LLM error message
+        """
+        logger.warning(f"LLM error on channel {message.channel}: {message.data.get('error')}")
+        # LLM errors are handled by channel subscribers
+    
+    async def _handle_chat_error(self, message: MCPMessage) -> None:
+        """
+        Handle chat error messages.
+        
+        Args:
+            message: Chat error message
+        """
+        logger.warning(f"Chat error on channel {message.channel}: {message.data.get('error')}")
+        # Chat errors are handled by channel subscribers
     
     def add_message_handler(self, message_type: str, handler: Callable[[MCPMessage], None]) -> None:
         """

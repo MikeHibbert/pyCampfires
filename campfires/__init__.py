@@ -19,9 +19,7 @@ from .core.openrouter import (
     ChatMessage, 
     ChatRequest, 
     ChatResponse,
-    LLMCamperMixin,
-    quick_completion,
-    quick_chat
+    LLMCamperMixin
 )
 
 # MCP (Model Context Protocol) components
@@ -56,8 +54,6 @@ __all__ = [
     "ChatRequest", 
     "ChatResponse",
     "LLMCamperMixin",
-    "quick_completion",
-    "quick_chat",
     
     # MCP protocol
     "MCPProtocol",

@@ -1,9 +1,12 @@
 # LLM Integration Guide
 
-This guide covers advanced LLM integration patterns in the Campfires framework, including the `LLMCamperMixin`, `TeamMember` class, and custom prompt engineering techniques.
+This guide covers advanced LLM integration patterns in the Campfires framework, including the `LLMCamperMixin`, `TeamMember` class, custom prompt engineering techniques, and the new **Enhanced Orchestration** system.
 
 ## Table of Contents
 
+- [Enhanced Orchestration System](#enhanced-orchestration-system) ⭐ **NEW**
+- [Interactive HTML Reports](#interactive-html-reports) ⭐ **NEW**
+- [Advanced Execution Tracking](#advanced-execution-tracking) ⭐ **NEW**
 - [LLMCamperMixin Overview](#llmcampermixin-overview)
 - [TeamMember Class with RAG Integration](#teammember-class-with-rag-integration)
 - [Custom Prompt Engineering](#custom-prompt-engineering)
@@ -11,6 +14,374 @@ This guide covers advanced LLM integration patterns in the Campfires framework, 
 - [Best Practices](#best-practices)
 - [Error Handling](#error-handling)
 - [Examples](#examples)
+
+## Enhanced Orchestration System
+
+The Enhanced Orchestration system represents a major advancement in the Campfires framework, providing sophisticated task management with detailed execution tracking and interactive HTML reports. This system automatically captures the thought processes, decision-making strategies, and quality considerations of your AI agents.
+
+### Key Features
+
+- **Detailed Execution Tracking**: Captures problem understanding, approach selection, and quality considerations
+- **Interactive HTML Reports**: Rich reports with expandable sections for deep analysis
+- **RAG Integration Tracking**: Shows how document context influences decisions
+- **Role-Based Analysis**: Tracks how different expertise areas contribute to outcomes
+- **Risk Assessment**: Automatic identification of potential risks and mitigation strategies
+- **Quality Validation**: Built-in quality checks and confidence assessments
+- **Multi-Stage Processing**: Support for complex workflows with stage-by-stage tracking
+
+### Enhanced LLM Integration
+
+The Enhanced Orchestration system seamlessly integrates with existing LLM capabilities while adding sophisticated tracking and reporting:
+
+```python
+from campfires import Camper, LLMCamperMixin, OpenRouterConfig, Torch
+
+class EnhancedLLMCamper(Camper, LLMCamperMixin):
+    def __init__(self, name: str, expertise: str, personality: str):
+        super().__init__(name)
+        self.expertise = expertise
+        self.personality = personality
+        
+        config = OpenRouterConfig()
+        self.setup_llm(config)
+    
+    async def override_prompt(self, raw_prompt: str, system_prompt: str = None) -> dict:
+        """Enhanced LLM processing with detailed execution tracking"""
+        try:
+            # The enhanced orchestration system automatically captures:
+            # - Problem understanding phase
+            # - Approach selection reasoning
+            # - Quality considerations
+            # - Risk assessments
+            # - RAG context utilization
+            
+            enhanced_prompt = f"""
+            You are a {self.expertise} expert with the following personality: {self.personality}
+            
+            Task: {raw_prompt}
+            
+            Please provide a comprehensive analysis including:
+            
+            1. PROBLEM UNDERSTANDING:
+               - How you interpret this task
+               - Key assumptions you're making
+               - Critical factors to consider
+               - Stakeholder perspectives
+            
+            2. APPROACH SELECTION:
+               - Your chosen strategy and why
+               - Alternative approaches considered
+               - Risk-benefit analysis
+               - Resource requirements
+            
+            3. DETAILED ANALYSIS:
+               - Step-by-step reasoning
+               - Evidence and supporting information
+               - Quality checks performed
+               - Validation criteria
+            
+            4. RISK ASSESSMENT:
+               - Potential risks identified
+               - Impact and probability assessment
+               - Mitigation strategies
+               - Contingency plans
+            
+            5. QUALITY CONSIDERATIONS:
+               - Accuracy and reliability factors
+               - Confidence level and limitations
+               - Validation methods used
+               - Success metrics
+            
+            6. RECOMMENDATIONS:
+               - Specific actionable recommendations
+               - Implementation considerations
+               - Timeline and milestones
+               - Success criteria
+            """
+            
+            response = await self.llm_completion(enhanced_prompt)
+            
+            return {
+                "claim": response,
+                "confidence": 0.9,
+                "metadata": {
+                    "expertise": self.expertise,
+                    "personality": self.personality,
+                    "analysis_depth": "comprehensive",
+                    "execution_stage": "enhanced_analysis",
+                    "quality_assured": True,
+                    "risk_assessed": True,
+                    "enhanced_orchestration": True
+                }
+            }
+        except Exception as e:
+            return {
+                "claim": f"Enhanced analysis failed: {str(e)}",
+                "confidence": 0.1,
+                "metadata": {
+                    "error": True, 
+                    "expertise": self.expertise,
+                    "enhanced_orchestration": True
+                }
+            }
+```
+
+## Interactive HTML Reports
+
+The Enhanced Orchestration system generates rich, interactive HTML reports that provide deep insights into the decision-making processes of your AI agents. These reports are automatically created when using enhanced orchestration features.
+
+### Report Structure and Features
+
+#### 🔍 Execution Stages
+Each report includes detailed tracking of execution stages:
+
+- **Problem Understanding**: How agents interpreted the task
+  - Initial problem analysis
+  - Assumption identification
+  - Stakeholder consideration
+  - Context evaluation
+
+- **Approach Selection**: Strategy selection and reasoning
+  - Methodology selection rationale
+  - Alternative approaches considered
+  - Risk-benefit analysis
+  - Resource requirement assessment
+
+- **Execution Strategy**: Implementation details and planning
+  - Step-by-step execution plan
+  - Quality checkpoints
+  - Validation criteria
+  - Success metrics
+
+- **Quality Considerations**: Quality checks and validations
+  - Accuracy assessments
+  - Reliability factors
+  - Confidence intervals
+  - Limitation acknowledgments
+
+- **Risk Assessment**: Risk identification and mitigation
+  - Risk identification process
+  - Impact and probability analysis
+  - Mitigation strategies
+  - Contingency planning
+
+#### 📚 RAG Information Tracking
+When RAG (Retrieval-Augmented Generation) is used, reports include:
+
+- **Document Retrieval**: Sources accessed and retrieval methods
+- **Context Integration**: How information was synthesized
+- **Relevance Scoring**: Content prioritization rationale
+- **State Management**: Context evolution during processing
+
+#### ⚙️ Customization Details
+Reports show how agent characteristics influenced the analysis:
+
+- **Role-Based Adaptations**: How expertise influenced analysis
+- **Personality Integration**: Character trait effects on responses
+- **Context Awareness**: Situational factor considerations
+
+#### 📊 Impact Analysis
+Comprehensive analysis of outcomes and implications:
+
+- **Decision Quality**: Recommendation strength assessment
+- **Confidence Levels**: Reliability indicators
+- **Follow-up Actions**: Next steps and implementation guidance
+- **Success Metrics**: Measurement criteria and benchmarks
+
+### Accessing and Using Reports
+
+```python
+# Reports are automatically generated in the project directory
+# Look for files named: {session_name}_report_{timestamp}.html
+
+# Example report features:
+# 1. Open the HTML file in your browser
+# 2. Click the arrow (▶) next to each section to expand
+# 3. Explore the detailed execution tracking information
+# 4. Review the metadata and decision rationale
+# 5. Use the color-coded sections for easy navigation
+# 6. Export sections for documentation or sharing
+```
+
+## Advanced Execution Tracking
+
+The Enhanced Orchestration system provides sophisticated execution tracking that goes beyond simple input/output logging.
+
+### Multi-Stage Processing
+
+Track complex workflows through multiple processing stages:
+
+```python
+class StageProcessor(Camper, LLMCamperMixin):
+    def __init__(self, name: str, stage: str, focus_area: str):
+        super().__init__(name)
+        self.stage = stage
+        self.focus_area = focus_area
+        
+        config = OpenRouterConfig()
+        self.setup_llm(config)
+    
+    async def override_prompt(self, raw_prompt: str, system_prompt: str = None) -> dict:
+        """Stage-specific processing with enhanced tracking"""
+        try:
+            # Enhanced orchestration automatically tracks:
+            # - Stage progression
+            # - Decision points
+            # - Quality gates
+            # - Risk checkpoints
+            
+            stage_prompt = f"""
+            PROCESSING STAGE: {self.stage}
+            FOCUS AREA: {self.focus_area}
+            
+            Task: {raw_prompt}
+            
+            As a {self.stage} specialist focusing on {self.focus_area}:
+            
+            1. STAGE-SPECIFIC ANALYSIS:
+               - Key considerations for this stage
+               - Critical success factors
+               - Quality requirements
+               - Risk factors specific to this stage
+            
+            2. DECISION RATIONALE:
+               - Why this approach for this stage
+               - Alternative options considered
+               - Trade-offs and implications
+               - Dependencies on other stages
+            
+            3. QUALITY ASSURANCE:
+               - Validation criteria for this stage
+               - Quality checkpoints
+               - Success metrics
+               - Error detection methods
+            
+            4. STAGE COMPLETION:
+               - Deliverables for this stage
+               - Readiness for next stage
+               - Handoff requirements
+               - Documentation needs
+            """
+            
+            response = await self.llm_completion(stage_prompt)
+            
+            return {
+                "claim": response,
+                "confidence": 0.88,
+                "metadata": {
+                    "processing_stage": self.stage,
+                    "focus_area": self.focus_area,
+                    "stage_complete": True,
+                    "next_stage_ready": True,
+                    "quality_validated": True,
+                    "enhanced_tracking": True
+                }
+            }
+        except Exception as e:
+            return {
+                "claim": f"Stage {self.stage} processing failed: {str(e)}",
+                "confidence": 0.1,
+                "metadata": {
+                    "error": True, 
+                    "stage": self.stage,
+                    "enhanced_tracking": True
+                }
+            }
+```
+
+### RAG-Enhanced Execution Tracking
+
+Combine document context with execution tracking for intelligent analysis:
+
+```python
+class RAGEnhancedCamper(Camper, LLMCamperMixin):
+    def __init__(self, name: str, role: str, expertise: str, rag_context: str):
+        super().__init__(name)
+        self.role = role
+        self.expertise = expertise
+        self.rag_context = rag_context
+        
+        config = OpenRouterConfig()
+        self.setup_llm(config)
+    
+    async def override_prompt(self, raw_prompt: str, system_prompt: str = None) -> dict:
+        """RAG-enhanced processing with detailed execution tracking"""
+        try:
+            # Enhanced orchestration tracks RAG utilization:
+            # - Document retrieval process
+            # - Context integration methods
+            # - Relevance scoring
+            # - Information synthesis
+            
+            rag_enhanced_prompt = f"""
+            ROLE: {self.role}
+            EXPERTISE: {self.expertise}
+            
+            AVAILABLE CONTEXT DOCUMENTS:
+            {self.rag_context}
+            
+            TASK: {raw_prompt}
+            
+            As a {self.role} with expertise in {self.expertise}:
+            
+            1. CONTEXT ANALYSIS:
+               - Relevant information from available documents
+               - How context applies to this specific task
+               - Gaps in available information
+               - Additional context needed
+            
+            2. ROLE-SPECIFIC PERSPECTIVE:
+               - Analysis from your professional viewpoint
+               - Key concerns and considerations for your role
+               - Opportunities and recommendations
+               - Professional standards and best practices
+            
+            3. EVIDENCE-BASED RECOMMENDATIONS:
+               - Recommendations supported by context documents
+               - Best practices from your expertise area
+               - Implementation guidance
+               - Risk mitigation strategies
+            
+            4. COLLABORATION INSIGHTS:
+               - How this integrates with other team perspectives
+               - Dependencies and coordination requirements
+               - Success criteria from your role's perspective
+               - Communication and handoff requirements
+            
+            5. QUALITY AND VALIDATION:
+               - Confidence in recommendations
+               - Validation methods used
+               - Limitations and assumptions
+               - Success metrics and monitoring
+            """
+            
+            response = await self.llm_completion(rag_enhanced_prompt)
+            
+            return {
+                "claim": response,
+                "confidence": 0.92,
+                "metadata": {
+                    "role": self.role,
+                    "expertise": self.expertise,
+                    "rag_enhanced": True,
+                    "context_utilized": True,
+                    "evidence_based": True,
+                    "collaboration_ready": True,
+                    "quality_validated": True,
+                    "enhanced_orchestration": True
+                }
+            }
+        except Exception as e:
+            return {
+                "claim": f"RAG analysis failed for {self.role}: {str(e)}",
+                "confidence": 0.1,
+                "metadata": {
+                    "error": True, 
+                    "role": self.role,
+                    "enhanced_orchestration": True
+                }
+            }
+```
 
 ## LLMCamperMixin Overview
 

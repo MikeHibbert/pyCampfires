@@ -8,7 +8,12 @@ for current information, opinions, and trends relevant to their roles.
 
 import asyncio
 import logging
+import sys
+import os
 from typing import Dict, Any
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from campfires import (
     Campfire, 
@@ -27,8 +32,21 @@ logger = logging.getLogger(__name__)
 class ZeitgeistCamper(LLMCamperMixin, Camper):
     """A camper that can use Zeitgeist to gather internet knowledge."""
     
-    def __init__(self, name: str, role: str, **kwargs):
-        super().__init__(name=name, **kwargs)
+    def __init__(self, name: str, role: str, party_box=None, **kwargs):
+        from campfires.party_box import LocalDriver
+        
+        # Create a default party box if none provided
+        if party_box is None:
+            party_box = LocalDriver("./demo_party_box")
+        
+        # Create config with name and role
+        config = {
+            "name": name,
+            "role": role,
+            **kwargs
+        }
+        
+        super().__init__(party_box, config)
         self.set_role(role)
         self.enable_zeitgeist()
         
@@ -98,6 +116,23 @@ class ZeitgeistCamper(LLMCamperMixin, Camper):
                 insights += f"- {expert.get('summary', '')}\n"
         
         return insights
+
+    async def override_prompt(self, raw_prompt: str, system_prompt: str = None) -> Dict[str, Any]:
+        """Override prompt method for LLM integration."""
+        try:
+            # Use the LLM completion method from LLMCamperMixin
+            response = await self.llm_completion(raw_prompt, system_prompt)
+            return {
+                'claim': response,
+                'confidence': 1.0,
+                'metadata': {'role': self.get_role()}
+            }
+        except Exception as e:
+            return {
+                'claim': f"Error processing prompt: {str(e)}",
+                'confidence': 0.0,
+                'metadata': {'error': True, 'role': self.get_role()}
+            }
 
 
 async def run_zeitgeist_demo():
