@@ -199,8 +199,9 @@ async def run_simple_demo():
             
             # Create torch
             torch = Torch(
-                id=generate_torch_id(),
-                data={'text': text},
+                claim=text,
+                source_campfire="demo_campfire",
+                channel="demo_channel",
                 metadata={'source': 'demo', 'batch': i}
             )
             

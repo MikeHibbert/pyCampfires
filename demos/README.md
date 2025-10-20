@@ -178,6 +178,65 @@ A demonstration of internet knowledge and opinion mining capabilities using the 
 python demos/zeitgeist_demo.py
 ```
 
+### 6. Multimodal Capabilities Demo (`multimodal_demo.py`) ⭐ NEW
+
+A comprehensive demonstration of Campfires' advanced multimodal content handling capabilities, showcasing the framework's ability to process text, images, audio, and other content types in a unified system.
+
+**Multimodal Features:**
+- **Content Type Management**: Unified handling of text, image, audio, video, and document content
+- **Multimodal Torches**: Enhanced torch system supporting mixed content types
+- **Asset Management**: Advanced storage and retrieval with automatic metadata extraction
+- **Prompt Engineering**: Specialized prompts for different content types and multimodal scenarios
+- **Audio Processing**: Format detection, validation, conversion, and metadata extraction
+- **OpenRouter Integration**: Multimodal API integration for vision and audio analysis
+- **Search and Indexing**: Content-aware search across different media types
+
+**Technical Implementation:**
+- **MultimodalContent**: Core class for handling different content types with metadata
+- **MultimodalTorch**: Enhanced torch supporting mixed content with type filtering
+- **MultimodalAssetManager**: Advanced storage with content classification and search
+- **MultimodalPromptLibrary**: Template-based prompts for multimodal scenarios
+- **AudioProcessor**: Comprehensive audio format handling and processing
+- **MetadataExtractor**: Automatic metadata extraction for all content types
+
+**Processing Capabilities:**
+1. **Content Creation**: Create and manage text, image, audio, and document content
+2. **Metadata Extraction**: Automatic extraction of content properties and characteristics
+3. **Asset Storage**: Intelligent storage with deduplication and content-based organization
+4. **Search and Discovery**: Advanced search by content type, metadata, and properties
+5. **Format Conversion**: Convert between different content formats and encodings
+6. **Prompt Engineering**: Generate specialized prompts for different content analysis tasks
+
+**To run:**
+```bash
+python demos/multimodal_demo.py
+```
+
+**Output:** Creates sample multimodal assets, demonstrates processing capabilities, and generates a comprehensive demo report with statistics and examples.
+
+### 7. Quick Multimodal Demo (`quick_multimodal_demo.py`) ⭐ NEW
+
+A streamlined demonstration of core multimodal features for quick exploration and testing.
+
+**Core Features:**
+- **Multimodal Content Creation**: Simple examples of text, image, and audio content handling
+- **Content Operations**: Filtering, analysis, and format conversion
+- **Basic Prompt Engineering**: Essential multimodal prompt generation
+- **Integration Examples**: Code examples for OpenRouter, Campfire, and Party Box integration
+
+**Quick Start Features:**
+- **ContentType Enumeration**: Understanding different content types
+- **MultimodalContent Operations**: Creating and manipulating content objects
+- **MultimodalTorch Basics**: Essential torch operations for multimodal content
+- **Format Conversion**: Converting between MCP messages and legacy formats
+
+**To run:**
+```bash
+python demos/quick_multimodal_demo.py
+```
+
+**Output:** Provides immediate feedback on multimodal capabilities with concise examples and integration patterns.
+
 ## Understanding Enhanced Orchestration Output
 
 ### Interactive HTML Reports Structure

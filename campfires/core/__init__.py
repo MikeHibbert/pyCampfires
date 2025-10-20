@@ -13,6 +13,42 @@ from .openrouter import (
     LLMCamperMixin
 )
 
+# Multimodal components
+from .multimodal_torch import (
+    ContentType,
+    MultimodalContent,
+    MultimodalTorch
+)
+
+from .multimodal_openrouter import (
+    MultimodalChatMessage,
+    MultimodalOpenRouterClient,
+    MultimodalLLMCamperMixin
+)
+
+from .multimodal_camper_mixin import MultimodalCamperMixin
+
+from .multimodal_prompts import (
+    PromptType,
+    PromptTemplate,
+    MultimodalPromptLibrary,
+    PromptEngineeringPatterns,
+    MultimodalPromptBuilder,
+    get_prompt_for_content_types
+)
+
+from .audio_processor import (
+    AudioMetadata,
+    AudioProcessor
+)
+
+from .audio_utils import (
+    AudioFormatDetector,
+    AudioValidator,
+    AudioConverter,
+    AudioMetrics
+)
+
 # New orchestration and factory components
 from .orchestration import (
     TaskComplexity,
@@ -113,6 +149,27 @@ __all__ = [
     "LLMCamperMixin",
     "quick_completion",
     "quick_chat",
+    
+    # Multimodal components
+    "ContentType",
+    "MultimodalContent",
+    "MultimodalTorch",
+    "MultimodalChatMessage",
+    "MultimodalOpenRouterClient",
+    "MultimodalLLMCamperMixin",
+    "MultimodalCamperMixin",
+    "PromptType",
+    "PromptTemplate",
+    "MultimodalPromptLibrary",
+    "PromptEngineeringPatterns",
+    "MultimodalPromptBuilder",
+    "get_prompt_for_content_types",
+    "AudioMetadata",
+    "AudioProcessor",
+    "AudioFormatDetector",
+    "AudioValidator",
+    "AudioConverter",
+    "AudioMetrics",
     
     # Orchestration components
     "TaskComplexity",

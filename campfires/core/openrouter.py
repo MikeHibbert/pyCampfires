@@ -30,7 +30,7 @@ class OpenRouterConfig:
     """Configuration for OpenRouter API."""
     api_key: str = None
     base_url: str = "https://openrouter.ai/api/v1"
-    default_model: str = "openai/gpt-oss-20b:free"
+    default_model: str = "meta-llama/llama-3.2-11b-vision-instruct:free"
     max_tokens: int = 1000
     temperature: float = 0.7
     timeout: int = 30

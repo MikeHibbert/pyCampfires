@@ -32,7 +32,7 @@ Welcome to the valley. Pull up a log, grab a torch, and let's build something am
 ## Features
 
 - **Modular Architecture**: Build complex AI workflows using composable "Campers" (AI agents)
-- **LLM Integration**: Built-in support for OpenRouter and other LLM providers
+- **LLM Integration**: Built-in support for OpenRouter and Ollama (local LLM deployment)
 - **Enhanced Orchestration**: Advanced task orchestration with detailed execution stages, problem understanding, approach selection, and quality considerations
 - **Interactive HTML Reports**: Rich HTML reports with expandable sections showing execution stages, RAG information, customization details, and impact analysis
 - **Zeitgeist**: Internet knowledge and opinion mining for informed campers
@@ -98,6 +98,51 @@ async def main():
     
     # Send a torch for processing
     input_torch = Torch(claim="Hello, world!")
+    await campfire.send_torch(input_torch)
+    
+    # Stop the campfire
+    await campfire.stop()
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+### Local LLM with Ollama
+
+```python
+import asyncio
+from campfires import Campfire, Camper, Torch, OllamaConfig, LLMCamperMixin
+
+class LocalCamper(Camper, LLMCamperMixin):
+    async def process(self, torch: Torch) -> Torch:
+        # Process using local Ollama model
+        response = await self.llm_completion(f"Analyze: {torch.claim}")
+        return Torch(
+            claim=response,
+            confidence=0.8,
+            metadata={"processed_by": "LocalCamper", "provider": "ollama"}
+        )
+
+async def main():
+    # Setup Ollama configuration (requires Ollama server running)
+    config = OllamaConfig(
+        base_url="http://localhost:11434",
+        model="llama2"
+    )
+    
+    # Create camper and setup LLM
+    camper = LocalCamper("local-camper")
+    camper.setup_llm(config)
+    
+    # Create campfire and add camper
+    campfire = Campfire("local-campfire")
+    campfire.add_camper(camper)
+    
+    # Start the campfire
+    await campfire.start()
+    
+    # Send a torch for processing
+    input_torch = Torch(claim="Hello from local AI!")
     await campfire.send_torch(input_torch)
     
     # Stop the campfire
@@ -830,6 +875,36 @@ config = OpenRouterConfig(
 )
 ```
 
+### Ollama Configuration
+
+For local LLM deployment with Ollama:
+
+```python
+from campfires import OllamaConfig, MultimodalOllamaConfig
+
+# Basic text generation
+config = OllamaConfig(
+    base_url="http://localhost:11434",
+    model="llama2",
+    temperature=0.7,
+    max_tokens=1000
+)
+
+# Multimodal capabilities (text + images)
+multimodal_config = MultimodalOllamaConfig(
+    base_url="http://localhost:11434",
+    text_model="llama2",
+    vision_model="llava",
+    temperature=0.7,
+    max_tokens=1000
+)
+```
+
+**Prerequisites for Ollama:**
+1. Install Ollama: Visit [ollama.ai](https://ollama.ai) for installation instructions
+2. Start Ollama server: `ollama serve`
+3. Download models: `ollama pull llama2` and `ollama pull llava` (for multimodal)
+
 ## Examples
 
 Check out the `demos/` directory for complete examples:
@@ -839,6 +914,8 @@ Check out the `demos/` directory for complete examples:
 - `tax_app_team_demo.py`: Software development team collaboration with RAG integration, LLM-powered recommendations, and detailed execution analysis
 - `zeitgeist_demo.py`: Internet knowledge and opinion mining with Zeitgeist
 - `reddit_crisis_tracker.py`: Crisis detection system for social media
+- `ollama_demo.py`: Comprehensive Ollama integration demonstration with text generation, chat, and multimodal capabilities
+- `quick_ollama_test.py`: Quick test script to verify Ollama integration
 - `run_demo.py`: Simple demonstration of basic concepts
 
 All demos generate interactive HTML reports with expandable sections showing execution stages, RAG information, and detailed analysis.

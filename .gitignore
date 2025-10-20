@@ -193,3 +193,8 @@ demo_output/
 
 # private project docs
 inspiration/
+demos/*.html
+*demo_rag_states*
+*demo_party_box*
+*demo_storage*
+/*.html

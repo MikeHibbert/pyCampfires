@@ -20,6 +20,8 @@ from .orchestration import SubTask, RoleRequirement
 from ..party_box.box_driver import BoxDriver
 from ..mcp.protocol import MCPProtocol
 from ..core.openrouter import LLMCamperMixin, OpenRouterConfig
+from ..core.ollama import OllamaConfig
+from ..core.multimodal_ollama import MultimodalOllamaConfig, OllamaMultimodalCamper
 
 
 logger = logging.getLogger(__name__)
@@ -69,12 +71,21 @@ class DynamicCamper(Camper, LLMCamperMixin):
         """
         super().__init__(party_box, config)
         self.role_requirement = role_requirement
+        self.llm_provider = config.get('llm_provider', 'openrouter')
         
-        # Setup LLM capabilities
-        openrouter_config = OpenRouterConfig(
-            api_key=config.get('openrouter_api_key', '')
-        )
-        self.setup_llm(openrouter_config)
+        # Setup LLM capabilities based on provider
+        if self.llm_provider == 'ollama':
+            ollama_config = OllamaConfig(
+                base_url=config.get('ollama_base_url', 'http://localhost:11434'),
+                model=config.get('ollama_model', 'llama2')
+            )
+            self.setup_llm(ollama_config)
+        else:
+            # Default to OpenRouter
+            openrouter_config = OpenRouterConfig(
+                api_key=config.get('openrouter_api_key', '')
+            )
+            self.setup_llm(openrouter_config)
         
         # Configure role-specific behavior
         self._configure_role_behavior()
@@ -160,6 +171,59 @@ class DynamicCamper(Camper, LLMCamperMixin):
                     'failed_processor': self.role_name
                 }
             )
+    
+    async def override_prompt(self, raw_prompt: str, system_prompt: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Override the base prompt method required by Camper abstract class.
+        
+        Args:
+            raw_prompt: The raw prompt to process
+            system_prompt: Optional system prompt from RAG document or configuration
+            
+        Returns:
+            Dictionary containing the processed response
+        """
+        try:
+            # Use system_prompt from RAG document if provided, otherwise use role-specific system prompt
+            final_system = system_prompt if system_prompt else self.system_prompt
+            
+            # Create role-specific processing prompt
+            processing_prompt = f"""
+            {final_system}
+            
+            TASK: {raw_prompt}
+            
+            Process this task according to your role as {self.role_name}.
+            Provide a thorough response that demonstrates your expertise in {', '.join(self.expertise_areas)}.
+            """
+            
+            # Process using LLM
+            result = await self.llm_completion_with_mcp(processing_prompt)
+            
+            return {
+                'claim': result,
+                'confidence': 0.85,
+                'metadata': {
+                    'processed_by': self.role_name,
+                    'expertise_applied': self.expertise_areas,
+                    'capabilities_used': self.capabilities,
+                    'personality_traits': self.personality_traits,
+                    'rag_system_prompt_used': bool(system_prompt)
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Override prompt failed for {self.role_name}: {e}")
+            return {
+                'claim': f"Processing failed: {str(e)}",
+                'confidence': 0.1,
+                'metadata': {
+                    'processing_error': str(e),
+                    'failed_processor': self.role_name,
+                    'error_type': 'override_prompt_failure'
+                }
+            }
+
 
 
 class CampfireFactory:
@@ -319,8 +383,11 @@ class CampfireFactory:
             camper_config = {
                 **template.default_config,
                 'name': f"{role_requirement.role_name}_camper",
+                'llm_provider': self.config.get('llm_provider', 'openrouter'),
                 'openrouter_api_key': self.config.get('openrouter_api_key', ''),
-                'model': self.config.get('model', 'meta-llama/llama-3.2-3b-instruct:free')
+                'model': self.config.get('model', 'meta-llama/llama-3.2-3b-instruct:free'),
+                'ollama_base_url': self.config.get('ollama_base_url', 'http://localhost:11434'),
+                'ollama_model': self.config.get('ollama_model', 'llama2')
             }
             
             dynamic_camper = DynamicCamper(
@@ -391,8 +458,11 @@ class CampfireFactory:
             camper_config = {
                 **config,
                 'name': f"{template_name}_camper",
+                'llm_provider': self.config.get('llm_provider', 'openrouter'),
                 'openrouter_api_key': self.config.get('openrouter_api_key', ''),
-                'model': self.config.get('model', 'meta-llama/llama-3.2-3b-instruct:free')
+                'model': self.config.get('model', 'meta-llama/llama-3.2-3b-instruct:free'),
+                'ollama_base_url': self.config.get('ollama_base_url', 'http://localhost:11434'),
+                'ollama_model': self.config.get('ollama_model', 'llama2')
             }
             
             # For now, create a basic dynamic camper
