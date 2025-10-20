@@ -770,6 +770,44 @@ campfire.add_camper(analysis_camper)
 # Now they can work together around the fire
 ```
 
+### YAML Save/Restore - Preserving the Valley's Memory
+The **YAML Save/Restore** functionality allows you to save your campfire configurations and restore them later, preserving the exact setup of campers, their roles, and configurations. This is perfect for sharing campfire setups or recreating successful collaborations:
+
+```python
+from campfires import Campfire, CampfireManager
+
+# Save individual campfire
+campfire = Campfire("analysis-team")
+campfire.add_camper(analyst_camper)
+campfire.add_camper(researcher_camper)
+
+# Save to YAML with flexible location and template-based naming
+await campfire.save_to_yaml(
+    location="./saved_campfires",  # Directory or full path
+    filename_template="{name}_backup_{timestamp}.yaml"  # Optional template
+)
+
+# Restore from YAML
+restored_campfire = await Campfire.load_from_yaml("./saved_campfires/analysis-team_backup_20241201_143022.yaml")
+
+# Bulk operations with CampfireManager
+manager = CampfireManager()
+manager.add_campfire(campfire1)
+manager.add_campfire(campfire2)
+
+# Save all campfires at once
+await manager.save_all_to_yaml("./campfire_backups")
+
+# Load multiple campfires
+loaded_campfires = await manager.load_campfires_from_directory("./campfire_backups")
+```
+
+The YAML files contain complete campfire configurations including:
+- Campfire names and metadata
+- All camper configurations and roles
+- LLM settings and API configurations
+- Custom attributes and initialization parameters
+
 ### Zeitgeist - The Valley's Internet Knowledge
 **Zeitgeist** gives your campers the ability to search the internet for current information, opinions, and trends relevant to their roles. Like having a wise oracle at the campfire who can instantly access the collective knowledge of the world:
 

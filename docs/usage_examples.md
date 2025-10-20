@@ -8,6 +8,7 @@ This document provides practical, ready-to-use examples of implementing LLM-enab
 - [Interactive HTML Reports](#interactive-html-reports) ⭐ **NEW**
 - [Sequential Processing with Enhanced Tracking](#sequential-processing-with-enhanced-tracking) ⭐ **NEW**
 - [RAG-Enhanced Team Collaboration](#rag-enhanced-team-collaboration) ⭐ **NEW**
+- [YAML Save/Restore Configuration Management](#yaml-saverestore-configuration-management) ⭐ **NEW**
 - [Basic LLM-Enabled Camper](#basic-llm-enabled-camper)
 - [Expert Analysis System](#expert-analysis-system)
 - [Content Generation Pipeline](#content-generation-pipeline)
@@ -536,6 +537,262 @@ async def rag_team_collaboration_example():
 if __name__ == "__main__":
     asyncio.run(rag_team_collaboration_example())
 ```
+
+## YAML Save/Restore Configuration Management
+
+The YAML save/restore functionality allows you to persist campfire configurations and restore them later with complete fidelity. This is essential for sharing setups, creating templates, and maintaining consistent environments across different deployments.
+
+### Key Features
+
+- **Complete Configuration Persistence**: Save all camper attributes, roles, and LLM configurations
+- **Flexible Location Management**: Specify directories or full file paths
+- **Template-Based Naming**: Automatic filename generation with timestamps
+- **Bulk Operations**: Manage multiple campfires with CampfireManager
+- **Human-Readable Format**: YAML files can be manually inspected and edited
+
+### Basic Save/Restore Example
+
+```python
+import asyncio
+from campfires import Campfire, Camper, LLMCamperMixin, OpenRouterConfig, CampfireManager
+
+class ConfigurableCamper(Camper, LLMCamperMixin):
+    def __init__(self, name: str, role: str, expertise: str):
+        super().__init__(name)
+        self.role = role
+        self.expertise = expertise
+        
+        # Setup LLM configuration
+        config = OpenRouterConfig()
+        self.setup_llm(config)
+    
+    async def override_prompt(self, raw_prompt: str, system_prompt: str = None) -> dict:
+        """Role-specific prompt processing"""
+        enhanced_prompt = f"""
+        You are a {self.role} with expertise in {self.expertise}.
+        
+        Task: {raw_prompt}
+        
+        Please provide analysis from your {self.role} perspective, 
+        focusing on {self.expertise} considerations.
+        """
+        
+        response = await self.llm_completion(enhanced_prompt)
+        
+        return {
+            "claim": response,
+            "confidence": 0.9,
+            "metadata": {
+                "role": self.role,
+                "expertise": self.expertise,
+                "analysis_type": "role_specific"
+            }
+        }
+
+async def yaml_configuration_example():
+    """Demonstrate YAML save/restore functionality"""
+    
+    # Create a campfire with specialized campers
+    analysis_campfire = Campfire("market-analysis-team")
+    
+    # Add campers with different roles and expertise
+    market_analyst = ConfigurableCamper(
+        "sarah-analyst",
+        "Market Analyst", 
+        "consumer behavior and market trends"
+    )
+    
+    financial_expert = ConfigurableCamper(
+        "mike-finance",
+        "Financial Analyst",
+        "financial modeling and risk assessment"
+    )
+    
+    tech_strategist = ConfigurableCamper(
+        "alex-tech",
+        "Technology Strategist",
+        "emerging technologies and digital transformation"
+    )
+    
+    analysis_campfire.add_camper(market_analyst)
+    analysis_campfire.add_camper(financial_expert)
+    analysis_campfire.add_camper(tech_strategist)
+    
+    print("=== Original Campfire Configuration ===")
+    print(f"Campfire: {analysis_campfire.name}")
+    print(f"Campers: {len(analysis_campfire.campers)}")
+    for camper in analysis_campfire.campers:
+        print(f"  - {camper.name}: {camper.role} ({camper.expertise})")
+    
+    # Save campfire configuration to YAML
+    print("\n=== Saving Configuration ===")
+    yaml_path = await analysis_campfire.save_to_yaml(
+        location="./saved_configurations",
+        filename_template="{name}_config_{timestamp}.yaml"
+    )
+    print(f"Configuration saved to: {yaml_path}")
+    
+    # Restore campfire from YAML
+    print("\n=== Restoring Configuration ===")
+    restored_campfire = await Campfire.load_from_yaml(yaml_path)
+    
+    print(f"Restored Campfire: {restored_campfire.name}")
+    print(f"Restored Campers: {len(restored_campfire.campers)}")
+    for camper in restored_campfire.campers:
+        print(f"  - {camper.name}: {camper.role} ({camper.expertise})")
+    
+    # Verify configuration integrity
+    print("\n=== Configuration Verification ===")
+    original_config = {
+        "name": analysis_campfire.name,
+        "camper_count": len(analysis_campfire.campers),
+        "camper_names": [c.name for c in analysis_campfire.campers],
+        "camper_roles": [c.role for c in analysis_campfire.campers]
+    }
+    
+    restored_config = {
+        "name": restored_campfire.name,
+        "camper_count": len(restored_campfire.campers),
+        "camper_names": [c.name for c in restored_campfire.campers],
+        "camper_roles": [c.role for c in restored_campfire.campers]
+    }
+    
+    if original_config == restored_config:
+        print("✅ Configuration restored successfully!")
+    else:
+        print("❌ Configuration mismatch detected")
+        print(f"Original: {original_config}")
+        print(f"Restored: {restored_config}")
+
+async def bulk_yaml_operations_example():
+    """Demonstrate bulk YAML operations with CampfireManager"""
+    
+    # Create multiple campfires
+    campfires = []
+    
+    # Research team
+    research_team = Campfire("research-team")
+    research_team.add_camper(ConfigurableCamper(
+        "dr-smith", "Research Scientist", "data analysis and methodology"
+    ))
+    research_team.add_camper(ConfigurableCamper(
+        "prof-jones", "Academic Researcher", "literature review and synthesis"
+    ))
+    campfires.append(research_team)
+    
+    # Development team
+    dev_team = Campfire("development-team")
+    dev_team.add_camper(ConfigurableCamper(
+        "alice-dev", "Senior Developer", "software architecture and implementation"
+    ))
+    dev_team.add_camper(ConfigurableCamper(
+        "bob-qa", "QA Engineer", "testing strategies and quality assurance"
+    ))
+    campfires.append(dev_team)
+    
+    # Marketing team
+    marketing_team = Campfire("marketing-team")
+    marketing_team.add_camper(ConfigurableCamper(
+        "emma-marketing", "Marketing Manager", "brand strategy and customer engagement"
+    ))
+    marketing_team.add_camper(ConfigurableCamper(
+        "david-content", "Content Strategist", "content creation and storytelling"
+    ))
+    campfires.append(marketing_team)
+    
+    # Use CampfireManager for bulk operations
+    manager = CampfireManager()
+    for campfire in campfires:
+        manager.add_campfire(campfire)
+    
+    print("=== Bulk Save Operations ===")
+    saved_paths = await manager.save_all_to_yaml("./team_configurations")
+    print(f"Saved {len(saved_paths)} campfire configurations:")
+    for path in saved_paths:
+        print(f"  - {path}")
+    
+    print("\n=== Bulk Load Operations ===")
+    loaded_campfires = await manager.load_campfires_from_directory("./team_configurations")
+    print(f"Loaded {len(loaded_campfires)} campfire configurations:")
+    for campfire in loaded_campfires:
+        print(f"  - {campfire.name}: {len(campfire.campers)} campers")
+
+async def yaml_template_customization_example():
+    """Demonstrate advanced YAML filename templating"""
+    
+    campfire = Campfire("template-demo")
+    campfire.add_camper(ConfigurableCamper(
+        "demo-camper", "Demo Role", "template demonstration"
+    ))
+    
+    print("=== Template Customization Examples ===")
+    
+    # Different template patterns
+    templates = [
+        "{name}_backup_{timestamp}.yaml",
+        "campfire_{name}_{date}.yaml", 
+        "{name}_v{version}_{timestamp}.yaml",
+        "backup/{name}/{timestamp}.yaml"
+    ]
+    
+    for template in templates:
+        try:
+            path = await campfire.save_to_yaml(
+                location="./template_examples",
+                filename_template=template
+            )
+            print(f"Template '{template}' -> {path}")
+        except Exception as e:
+            print(f"Template '{template}' failed: {e}")
+
+if __name__ == "__main__":
+    print("Running YAML Configuration Management Examples...")
+    asyncio.run(yaml_configuration_example())
+    print("\n" + "="*60 + "\n")
+    asyncio.run(bulk_yaml_operations_example())
+    print("\n" + "="*60 + "\n")
+    asyncio.run(yaml_template_customization_example())
+```
+
+### YAML File Structure
+
+The generated YAML files contain complete campfire configurations:
+
+```yaml
+name: market-analysis-team
+created_at: '2024-12-01T14:30:22'
+version: '1.0'
+campers:
+  - name: sarah-analyst
+    class_name: ConfigurableCamper
+    module: __main__
+    config:
+      role: Market Analyst
+      expertise: consumer behavior and market trends
+    llm_config:
+      provider: openrouter
+      model: anthropic/claude-3-sonnet
+      api_key: ${OPENROUTER_API_KEY}
+  - name: mike-finance
+    class_name: ConfigurableCamper
+    module: __main__
+    config:
+      role: Financial Analyst
+      expertise: financial modeling and risk assessment
+    llm_config:
+      provider: openrouter
+      model: anthropic/claude-3-sonnet
+      api_key: ${OPENROUTER_API_KEY}
+```
+
+### Best Practices
+
+1. **Version Control**: Include YAML configurations in version control for team collaboration
+2. **Environment Variables**: Use environment variable references for sensitive data like API keys
+3. **Template Naming**: Use descriptive filename templates that include timestamps for uniqueness
+4. **Directory Organization**: Organize saved configurations in logical directory structures
+5. **Validation**: Always verify restored configurations match original setups
+6. **Backup Strategy**: Regularly save configurations before making significant changes
 
 ## Basic LLM-Enabled Camper
 

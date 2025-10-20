@@ -237,6 +237,31 @@ python demos/quick_multimodal_demo.py
 
 **Output:** Provides immediate feedback on multimodal capabilities with concise examples and integration patterns.
 
+### 8. YAML Save/Restore Test (`test_yaml_save_restore.py`) ⭐ NEW
+
+A comprehensive test script that demonstrates the YAML save and restore functionality for campfire configurations.
+
+**Core Features:**
+- **Configuration Persistence**: Save complete campfire setups to YAML files
+- **Flexible Restoration**: Restore campfires from YAML with complete fidelity
+- **Location Management**: Specify directories or full paths for YAML files
+- **Template Naming**: Automatic filename generation with timestamps
+- **Bulk Operations**: Use CampfireManager for managing multiple configurations
+
+**YAML Features:**
+- **Complete Preservation**: All camper roles, attributes, and configurations
+- **LLM Configuration**: Persist LLM settings and API configurations
+- **Metadata Tracking**: Save creation timestamps and version information
+- **Validation**: Verify save/restore integrity with comprehensive checks
+- **Human Readable**: YAML format allows manual inspection and editing
+
+**To run:**
+```bash
+python demos/test_yaml_save_restore.py
+```
+
+**Output:** Creates test campers, saves them to YAML, restores them, and validates that all configurations are preserved correctly.
+
 ## Understanding Enhanced Orchestration Output
 
 ### Interactive HTML Reports Structure
