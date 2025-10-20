@@ -4,8 +4,10 @@ Campfire class for orchestrating multimodal LLM workflows.
 
 import asyncio
 import logging
+import yaml
 from typing import List, Dict, Any, Optional, Callable, Union
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from .torch import Torch
 from .camper import Camper
@@ -325,6 +327,184 @@ class Campfire:
         return (f"Campfire(name='{self.name}', "
                 f"campers={[c.__class__.__name__ for c in self.campers]}, "
                 f"running={self.is_running})")
+    
+    def to_yaml_config(self) -> Dict[str, Any]:
+        """
+        Export campfire configuration to a YAML-compatible dictionary.
+        
+        Returns:
+            Dictionary containing campfire configuration in YAML format
+        """
+        # Extract camper configurations
+        campers_config = []
+        for camper in self.campers:
+            camper_config = {
+                'type': camper.__class__.__name__,
+                'name': camper.name,
+                'config': camper.config.copy() if hasattr(camper, 'config') else {}
+            }
+            
+            # Add role information if available
+            if hasattr(camper, '_role'):
+                camper_config['role'] = camper._role
+            
+            # Add RAG document path if available
+            if hasattr(camper, '_rag_document_path') and camper._rag_document_path:
+                camper_config['rag_document_path'] = camper._rag_document_path
+            
+            # Add LLM configuration if available
+            if hasattr(camper, '_llm_config') and camper._llm_config:
+                camper_config['llm_config'] = {
+                    'model': camper._llm_config.model,
+                    'temperature': camper._llm_config.temperature,
+                    'max_tokens': camper._llm_config.max_tokens,
+                    'top_p': camper._llm_config.top_p,
+                    'frequency_penalty': camper._llm_config.frequency_penalty,
+                    'presence_penalty': camper._llm_config.presence_penalty
+                }
+            
+            # Add multimodal capabilities if available
+            if hasattr(camper, 'supported_content_types'):
+                camper_config['supported_content_types'] = [
+                    ct.value for ct in camper.supported_content_types
+                ]
+            
+            campers_config.append(camper_config)
+        
+        # Build the YAML configuration
+        yaml_config = {
+            'version': '1.0',
+            'kind': 'CampfireManifest',
+            'metadata': {
+                'name': self.name,
+                'description': f'Campfire configuration for {self.name}',
+                'created_at': datetime.utcnow().isoformat(),
+                'campfire_class': self.__class__.__name__
+            },
+            'spec': {
+                'name': self.name,
+                'campers': campers_config,
+                'config': self.config.copy(),
+                'environment': {
+                    'max_concurrent_tasks': str(self.max_concurrent_tasks),
+                    'torch_ttl_hours': str(self.torch_ttl),
+                    'auto_cleanup': str(self.auto_cleanup).lower()
+                },
+                'resources': {
+                    'memory': 'medium',  # Default values
+                    'cpu': 'medium',
+                    'timeout_minutes': 30
+                },
+                'networking': {},
+                'volumes': []
+            }
+        }
+        
+        # Add party box configuration if available
+        if self.party_box:
+            yaml_config['spec']['party_box'] = {
+                'type': self.party_box.__class__.__name__,
+                'config': getattr(self.party_box, 'config', {})
+            }
+        
+        # Add MCP configuration if available
+        if self.mcp_protocol:
+            yaml_config['spec']['mcp'] = {
+                'enabled': True,
+                'channels': self.config.get('subscribe_channels', [])
+            }
+        
+        return yaml_config
+    
+    def save_to_yaml(self, file_path: str) -> None:
+        """
+        Save campfire configuration to a YAML file.
+        
+        Args:
+            file_path: Path where to save the YAML configuration file
+        """
+        yaml_config = self.to_yaml_config()
+        
+        # Ensure directory exists
+        path = Path(file_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Write YAML file
+        with open(file_path, 'w', encoding='utf-8') as f:
+            yaml.dump(yaml_config, f, default_flow_style=False, indent=2, sort_keys=False)
+        
+        logger.info(f"Campfire configuration saved to: {file_path}")
+    
+    @classmethod
+    def from_yaml_config(cls, yaml_config: Dict[str, Any], party_box: BoxDriver, 
+                        mcp_protocol: Optional[MCPProtocol] = None) -> 'Campfire':
+        """
+        Create a campfire instance from YAML configuration.
+        
+        Args:
+            yaml_config: YAML configuration dictionary
+            party_box: Party box driver instance
+            mcp_protocol: Optional MCP protocol instance
+            
+        Returns:
+            Campfire instance created from configuration
+        """
+        from .factory import CampfireFactory  # Import here to avoid circular imports
+        
+        spec = yaml_config.get('spec', {})
+        metadata = yaml_config.get('metadata', {})
+        
+        name = spec.get('name', metadata.get('name', 'unnamed_campfire'))
+        config = spec.get('config', {})
+        
+        # Extract environment variables
+        env = spec.get('environment', {})
+        if env:
+            config.update({
+                'max_concurrent_tasks': int(env.get('max_concurrent_tasks', 3)),
+                'torch_ttl_hours': int(env.get('torch_ttl_hours', 24)),
+                'auto_cleanup': env.get('auto_cleanup', 'true').lower() == 'true'
+            })
+        
+        # Create campers from configuration
+        campers = []
+        campers_config = spec.get('campers', [])
+        
+        for camper_config in campers_config:
+            # This would need to be implemented with a camper factory
+            # For now, we'll create a placeholder
+            logger.warning(f"Camper creation from YAML not fully implemented for type: {camper_config.get('type')}")
+        
+        # Create campfire instance
+        campfire = cls(
+            name=name,
+            campers=campers,
+            party_box=party_box,
+            mcp_protocol=mcp_protocol,
+            config=config
+        )
+        
+        return campfire
+    
+    @classmethod
+    def load_from_yaml(cls, file_path: str, party_box: BoxDriver, 
+                      mcp_protocol: Optional[MCPProtocol] = None) -> 'Campfire':
+        """
+        Load campfire configuration from a YAML file.
+        
+        Args:
+            file_path: Path to the YAML configuration file
+            party_box: Party box driver instance
+            mcp_protocol: Optional MCP protocol instance
+            
+        Returns:
+            Campfire instance loaded from file
+        """
+        with open(file_path, 'r', encoding='utf-8') as f:
+            yaml_config = yaml.safe_load(f)
+        
+        logger.info(f"Loading campfire configuration from: {file_path}")
+        return cls.from_yaml_config(yaml_config, party_box, mcp_protocol)
 
 
 class CampfireManager:
@@ -389,3 +569,204 @@ class CampfireManager:
             'campfires_count': len(self.campfires),
             'campfires': {name: cf.get_stats() for name, cf in self.campfires.items()}
         }
+    
+    def save_campfire_manifest(self, campfire_name: str, manifest_path: str) -> None:
+        """
+        Save a specific campfire's configuration to a YAML manifest file.
+        
+        Args:
+            campfire_name: Name of the campfire to save
+            manifest_path: Full path where to save the manifest file
+            
+        Raises:
+            KeyError: If campfire with given name doesn't exist
+        """
+        if campfire_name not in self.campfires:
+            raise KeyError(f"Campfire '{campfire_name}' not found in manager")
+        
+        campfire = self.campfires[campfire_name]
+        campfire.save_to_yaml(manifest_path)
+        logger.info(f"Saved campfire '{campfire_name}' manifest to: {manifest_path}")
+    
+    def save_all_manifests(self, base_directory: str, filename_template: str = "{name}.yaml") -> Dict[str, str]:
+        """
+        Save all campfires' configurations to YAML manifest files.
+        
+        Args:
+            base_directory: Directory where to save all manifest files
+            filename_template: Template for filenames, {name} will be replaced with campfire name
+            
+        Returns:
+            Dictionary mapping campfire names to their saved file paths
+        """
+        base_path = Path(base_directory)
+        base_path.mkdir(parents=True, exist_ok=True)
+        
+        saved_files = {}
+        for name, campfire in self.campfires.items():
+            filename = filename_template.format(name=name)
+            file_path = base_path / filename
+            campfire.save_to_yaml(str(file_path))
+            saved_files[name] = str(file_path)
+        
+        logger.info(f"Saved {len(saved_files)} campfire manifests to: {base_directory}")
+        return saved_files
+    
+    def load_campfire_from_manifest(self, manifest_path: str, party_box: 'BoxDriver', 
+                                   campfire_name: Optional[str] = None) -> str:
+        """
+        Load a campfire from a YAML manifest file and add it to the manager.
+        
+        Args:
+            manifest_path: Path to the YAML manifest file
+            party_box: Party box driver instance for the campfire
+            campfire_name: Optional custom name for the campfire (overrides manifest name)
+            
+        Returns:
+            Name of the loaded campfire
+            
+        Raises:
+            FileNotFoundError: If manifest file doesn't exist
+            ValueError: If campfire with same name already exists
+        """
+        if not Path(manifest_path).exists():
+            raise FileNotFoundError(f"Manifest file not found: {manifest_path}")
+        
+        # Load campfire from YAML
+        campfire = Campfire.load_from_yaml(manifest_path, party_box, self.mcp_protocol)
+        
+        # Use custom name if provided
+        if campfire_name:
+            campfire.name = campfire_name
+        
+        # Check for name conflicts
+        if campfire.name in self.campfires:
+            raise ValueError(f"Campfire with name '{campfire.name}' already exists in manager")
+        
+        # Add to manager
+        self.add_campfire(campfire)
+        logger.info(f"Loaded campfire '{campfire.name}' from manifest: {manifest_path}")
+        
+        return campfire.name
+    
+    def load_manifests_from_directory(self, manifests_directory: str, party_box: 'BoxDriver', 
+                                     pattern: str = "*.yaml") -> List[str]:
+        """
+        Load all YAML manifest files from a directory.
+        
+        Args:
+            manifests_directory: Directory containing manifest files
+            party_box: Party box driver instance for campfires
+            pattern: File pattern to match (default: "*.yaml")
+            
+        Returns:
+            List of loaded campfire names
+            
+        Raises:
+            FileNotFoundError: If directory doesn't exist
+        """
+        manifest_dir = Path(manifests_directory)
+        if not manifest_dir.exists():
+            raise FileNotFoundError(f"Manifests directory not found: {manifests_directory}")
+        
+        loaded_campfires = []
+        manifest_files = list(manifest_dir.glob(pattern))
+        
+        for manifest_file in manifest_files:
+            try:
+                campfire_name = self.load_campfire_from_manifest(
+                    str(manifest_file), party_box
+                )
+                loaded_campfires.append(campfire_name)
+            except Exception as e:
+                logger.warning(f"Failed to load manifest {manifest_file}: {e}")
+                continue
+        
+        logger.info(f"Loaded {len(loaded_campfires)} campfires from directory: {manifests_directory}")
+        return loaded_campfires
+    
+    def export_manager_state(self, export_path: str) -> Dict[str, Any]:
+        """
+        Export the entire manager state including all campfires to a directory structure.
+        
+        Args:
+            export_path: Base directory where to export the manager state
+            
+        Returns:
+            Dictionary containing export metadata
+        """
+        export_dir = Path(export_path)
+        export_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Create subdirectories
+        manifests_dir = export_dir / "manifests"
+        manifests_dir.mkdir(exist_ok=True)
+        
+        # Save all campfire manifests
+        saved_manifests = self.save_all_manifests(str(manifests_dir))
+        
+        # Create manager metadata
+        manager_metadata = {
+            'export_timestamp': datetime.utcnow().isoformat(),
+            'manager_stats': self.get_all_stats(),
+            'campfires_count': len(self.campfires),
+            'manifest_files': saved_manifests,
+            'export_version': '1.0'
+        }
+        
+        # Save manager metadata
+        metadata_file = export_dir / "manager_metadata.yaml"
+        with open(metadata_file, 'w', encoding='utf-8') as f:
+            yaml.dump(manager_metadata, f, default_flow_style=False, indent=2)
+        
+        logger.info(f"Exported manager state to: {export_path}")
+        return manager_metadata
+    
+    def import_manager_state(self, import_path: str, party_box: 'BoxDriver', 
+                           clear_existing: bool = False) -> Dict[str, Any]:
+        """
+        Import manager state from a previously exported directory structure.
+        
+        Args:
+            import_path: Base directory containing exported manager state
+            party_box: Party box driver instance for campfires
+            clear_existing: Whether to clear existing campfires before importing
+            
+        Returns:
+            Dictionary containing import results
+        """
+        import_dir = Path(import_path)
+        if not import_dir.exists():
+            raise FileNotFoundError(f"Import directory not found: {import_path}")
+        
+        # Clear existing campfires if requested
+        if clear_existing:
+            self.campfires.clear()
+            logger.info("Cleared existing campfires before import")
+        
+        # Load manager metadata
+        metadata_file = import_dir / "manager_metadata.yaml"
+        if metadata_file.exists():
+            with open(metadata_file, 'r', encoding='utf-8') as f:
+                metadata = yaml.safe_load(f)
+        else:
+            metadata = {}
+        
+        # Load campfire manifests
+        manifests_dir = import_dir / "manifests"
+        loaded_campfires = []
+        
+        if manifests_dir.exists():
+            loaded_campfires = self.load_manifests_from_directory(
+                str(manifests_dir), party_box
+            )
+        
+        import_results = {
+            'import_timestamp': datetime.utcnow().isoformat(),
+            'loaded_campfires': loaded_campfires,
+            'loaded_count': len(loaded_campfires),
+            'original_metadata': metadata
+        }
+        
+        logger.info(f"Imported manager state from: {import_path}")
+        return import_results

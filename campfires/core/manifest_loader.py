@@ -665,3 +665,177 @@ class ManifestLoader:
         self._orchestration_cache.clear()
         self._party_cache.clear()
         logger.info("Manifest cache cleared")
+    
+    def save_campfire_manifest(self, manifest: CampfireManifest, file_path: str) -> None:
+        """
+        Save a CampfireManifest to a YAML file.
+        
+        Args:
+            manifest: CampfireManifest instance to save
+            file_path: Path where to save the YAML file
+        """
+        # Convert manifest to dictionary
+        manifest_dict = {
+            'version': manifest.version,
+            'kind': 'CampfireManifest',
+            'metadata': {
+                'name': manifest.name,
+                'description': manifest.description,
+                'created_at': datetime.utcnow().isoformat()
+            },
+            'spec': {
+                'name': manifest.name,
+                'description': manifest.description,
+                'campers': manifest.campers,
+                'config': manifest.config,
+                'environment': manifest.environment,
+                'resources': manifest.resources,
+                'networking': manifest.networking,
+                'volumes': manifest.volumes
+            }
+        }
+        
+        # Add optional fields if present
+        if hasattr(manifest, 'party_box') and manifest.party_box:
+            manifest_dict['spec']['party_box'] = manifest.party_box
+        
+        if hasattr(manifest, 'mcp') and manifest.mcp:
+            manifest_dict['spec']['mcp'] = manifest.mcp
+        
+        # Ensure directory exists
+        path = Path(file_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Write YAML file
+        with open(file_path, 'w', encoding='utf-8') as f:
+            yaml.dump(manifest_dict, f, default_flow_style=False, indent=2, sort_keys=False)
+        
+        logger.info(f"CampfireManifest saved to: {file_path}")
+    
+    def save_orchestration_manifest(self, manifest: OrchestrationManifest, file_path: str) -> None:
+        """
+        Save an OrchestrationManifest to a YAML file.
+        
+        Args:
+            manifest: OrchestrationManifest instance to save
+            file_path: Path where to save the YAML file
+        """
+        # Convert manifest to dictionary
+        manifest_dict = {
+            'version': manifest.version,
+            'kind': 'OrchestrationManifest',
+            'metadata': {
+                'name': manifest.name,
+                'description': manifest.description,
+                'created_at': datetime.utcnow().isoformat()
+            },
+            'spec': {
+                'name': manifest.name,
+                'description': manifest.description,
+                'topology': manifest.topology,
+                'tasks': manifest.tasks,
+                'dependencies': manifest.dependencies,
+                'timeout_minutes': manifest.timeout_minutes,
+                'retry_policy': manifest.retry_policy,
+                'environment': manifest.environment,
+                'resources': manifest.resources,
+                'networking': manifest.networking,
+                'volumes': manifest.volumes
+            }
+        }
+        
+        # Ensure directory exists
+        path = Path(file_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Write YAML file
+        with open(file_path, 'w', encoding='utf-8') as f:
+            yaml.dump(manifest_dict, f, default_flow_style=False, indent=2, sort_keys=False)
+        
+        logger.info(f"OrchestrationManifest saved to: {file_path}")
+    
+    def save_party_manifest(self, manifest: PartyManifest, file_path: str) -> None:
+        """
+        Save a PartyManifest to a YAML file.
+        
+        Args:
+            manifest: PartyManifest instance to save
+            file_path: Path where to save the YAML file
+        """
+        # Convert manifest to dictionary
+        manifest_dict = {
+            'version': manifest.version,
+            'kind': 'PartyManifest',
+            'metadata': {
+                'name': manifest.name,
+                'description': manifest.description,
+                'created_at': datetime.utcnow().isoformat()
+            },
+            'spec': {
+                'name': manifest.name,
+                'description': manifest.description,
+                'campfires': manifest.campfires,
+                'shared_environment': manifest.shared_environment,
+                'shared_resources': manifest.shared_resources,
+                'networking': manifest.networking,
+                'volumes': manifest.volumes
+            }
+        }
+        
+        # Ensure directory exists
+        path = Path(file_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Write YAML file
+        with open(file_path, 'w', encoding='utf-8') as f:
+            yaml.dump(manifest_dict, f, default_flow_style=False, indent=2, sort_keys=False)
+        
+        logger.info(f"PartyManifest saved to: {file_path}")
+    
+    def save_manifest(self, manifest: Union[CampfireManifest, OrchestrationManifest, PartyManifest], 
+                     file_path: str) -> None:
+        """
+        Save any type of manifest to a YAML file.
+        
+        Args:
+            manifest: Manifest instance to save
+            file_path: Path where to save the YAML file
+        """
+        if isinstance(manifest, CampfireManifest):
+            self.save_campfire_manifest(manifest, file_path)
+        elif isinstance(manifest, OrchestrationManifest):
+            self.save_orchestration_manifest(manifest, file_path)
+        elif isinstance(manifest, PartyManifest):
+            self.save_party_manifest(manifest, file_path)
+        else:
+            raise ValueError(f"Unsupported manifest type: {type(manifest)}")
+    
+    def create_campfire_manifest_from_campfire(self, campfire) -> CampfireManifest:
+        """
+        Create a CampfireManifest from an existing Campfire instance.
+        
+        Args:
+            campfire: Campfire instance to convert
+            
+        Returns:
+            CampfireManifest instance
+        """
+        # Get YAML config from campfire
+        yaml_config = campfire.to_yaml_config()
+        spec = yaml_config.get('spec', {})
+        metadata = yaml_config.get('metadata', {})
+        
+        # Create manifest
+        manifest = CampfireManifest(
+            version=yaml_config.get('version', '1.0'),
+            name=spec.get('name', campfire.name),
+            description=metadata.get('description', f'Manifest for {campfire.name}'),
+            campers=spec.get('campers', []),
+            config=spec.get('config', {}),
+            environment=spec.get('environment', {}),
+            resources=spec.get('resources', {}),
+            networking=spec.get('networking', {}),
+            volumes=spec.get('volumes', [])
+        )
+        
+        return manifest
