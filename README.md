@@ -1012,3 +1012,12 @@ MIT License - see LICENSE file for details.
 - Documentation: https://campfires.readthedocs.io
 - GitHub Issues: https://github.com/campfires/campfires/issues
 - Discussions: https://github.com/campfires/campfires/discussions
+## Experiential RAG Demo
+The experiential RAG demo simulates job search experiences under different psychological contexts (supportive, challenging, neutral) and generates HTML reports analyzing behavioral and mental health impacts.
+
+### Key Reports
+- [Supportive Experience](demos/party_box/other/alex_job_search_supportive_experience_20251023_004109.html)
+- [Challenging Experience](demos/party_box/other/alex_job_search_challenging_experience_20251023_004109.html)
+- [Neutral Experience](demos/party_box/other/alex_job_search_neutral_experience_20251023_004109.html)
+
+These reports include narrative storytelling, mental health outlook summaries, and actionable insights from simulated scenarios.
