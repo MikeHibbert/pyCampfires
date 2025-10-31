@@ -2266,6 +2266,68 @@ if __name__ == "__main__":
     asyncio.run(creative_writing_example())
 ```
 
+## Factory Graph Backend Example (Neo4j or In-Memory)
+
+Campfires support a shared `GraphStore` for collaboration and memory. When using `CampfireFactory`, you can select the backend via configuration or environment variables.
+
+### Enable Neo4j via Environment
+
+- Required (for Neo4j): `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`
+- Optional: `NEO4J_DATABASE`
+- Select backend: `CAMPFIRES_GRAPH_BACKEND=neo4j` (defaults to `inmemory`)
+
+PowerShell example:
+
+```powershell
+$env:CAMPFIRES_GRAPH_BACKEND = "neo4j"
+$env:NEO4J_URI = "bolt://localhost:7687"
+$env:NEO4J_USER = "neo4j"
+$env:NEO4J_PASSWORD = "password"
+$env:NEO4J_DATABASE = "neo4j"  # optional
+```
+
+POSIX shell example:
+
+```bash
+export CAMPFIRES_GRAPH_BACKEND=neo4j
+export NEO4J_URI=bolt://localhost:7687
+export NEO4J_USER=neo4j
+export NEO4J_PASSWORD=password
+export NEO4J_DATABASE=neo4j  # optional
+```
+
+### Programmatic Factory Setup
+
+```python
+from campfires.core.factory import CampfireFactory
+from campfires.party_box.local_driver import LocalBoxDriver
+
+# The factory will automatically select the graph backend based on env vars
+party_box = LocalBoxDriver(base_path="./party_box")
+factory = CampfireFactory(party_box=party_box)
+
+# Create a campfire; it will share the factory's graph store
+campfire = factory.create_campfire(name="team-workflow", mode="team_rag")
+
+# If you prefer explicit config instead of env vars:
+factory_neo4j = CampfireFactory(
+    party_box=party_box,
+    config={
+        "graph_enabled": True,
+        "graph_backend": "neo4j",
+        "neo4j_uri": "bolt://localhost:7687",
+        "neo4j_user": "neo4j",
+        "neo4j_password": "password",
+        "neo4j_database": "neo4j",  # optional
+    },
+)
+campfire2 = factory_neo4j.create_campfire(name="team-workflow-neo4j", mode="team_rag")
+```
+
+Notes:
+- If `graph_enabled` is `True` and backend is `neo4j` but the driver is missing, the factory falls back to `InMemoryGraphStore`.
+- The Team RAG Auditor demo has its own convenience toggle, `CAMPFIRES_USE_NEO4J=1`, which is separate from the factory flag and only affects the demo script.
+
 ## Running the Examples
 
 To run any of these examples:
