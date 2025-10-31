@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2025-10-31
+
+### Fixed
+- Ollama client: conditional awaiting for `response.json()` in async paths
+- Ollama client: `list_models` now uses `raise_for_status()` for robustness
+- MCP protocol: `MCPMessage` default `channel` handling and safer `data`/`timestamp`
+- Audio utilities: validation order and base64 default to avoid edge cases
+
+### Changed
+- Documentation: Updated `demos/README_Ollama.md` with API notes and guidance
+- Tests: Verified Ollama client and MCP protocol behavior across test suite
+
+### Notes
+- PyPI currently at `0.4.1`; this release advances to `0.4.2`
+- Minor, backward-compatible improvements with no breaking API changes
+
 ## [0.4.0] - 2024-10-20
 
 ### Added
