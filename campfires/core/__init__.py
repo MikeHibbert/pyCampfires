@@ -92,6 +92,13 @@ from .default_auditor import (
     DefaultAuditor
 )
 
+from .team_auditor import (
+    TeamAuditor,
+    TeamAuditorConfig
+)
+
+from .orderer import Orderer, OrdererConfig
+
 # Topology management
 from .topology_manager import (
     TopologyType,
@@ -204,6 +211,8 @@ __all__ = [
     "TaskRequirement",
     "AuditContext",
     "DefaultAuditor",
+    "TeamAuditor",
+    "TeamAuditorConfig",
     
     # Topology management
     "TopologyType",

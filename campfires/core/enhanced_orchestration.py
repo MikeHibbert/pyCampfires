@@ -381,7 +381,9 @@ class EnhancedTaskDecomposer(TaskDecomposer):
                     priority=5,
                     estimated_complexity=TaskComplexity.MODERATE,
                     context_requirements=[],
-                    success_criteria="Complete subtask successfully"
+                    success_criteria="Complete subtask successfully",
+                    source_campfire=torch.source_campfire,
+                    channel=torch.channel
                 )
             
             # Look for context requirements

@@ -18,7 +18,10 @@ Prerequisites:
 import sys
 import asyncio
 import base64
+import json
 from pathlib import Path
+from campfires.party_box.local_driver import LocalDriver
+from campfires.party_box.multimodal_local_driver import MultimodalLocalDriver
 
 # Add the parent directory to the path so we can import campfires
 sys.path.append(str(Path(__file__).parent.parent))
@@ -31,7 +34,7 @@ from campfires.core.multimodal_ollama import (
 )
 from campfires.mcp.ollama_protocol import OllamaMCPProtocol
 from campfires.mcp.protocol import MCPMessage
-from campfires.core.multimodal_torch import ContentType, MultimodalContent
+from campfires.core.multimodal_torch import ContentType, MultimodalContent, Torch, MultimodalTorch
 
 
 class OllamaDemo:
@@ -62,7 +65,12 @@ class OllamaDemo:
             'ollama_model': 'gemma3',
             'ollama_timeout': 30
         }
-        self.mcp_protocol = OllamaMCPProtocol(mcp_config)
+        mcp_ollama_config = OllamaConfig(
+            base_url=mcp_config['ollama_base_url'],
+            model=mcp_config['ollama_model'],
+            timeout=mcp_config['ollama_timeout']
+        )
+        self.mcp_protocol = OllamaMCPProtocol(ollama_config=mcp_ollama_config)
     
     def print_section(self, title: str):
         """Print a formatted section header."""
@@ -144,14 +152,10 @@ class OllamaDemo:
             print(f"Error: {e}")
     
     def create_sample_image(self):
-        """Create a sample SVG image for multimodal testing."""
-        svg_content = '''<svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">
-            <rect width="200" height="200" fill="#f0f0f0"/>
-            <circle cx="100" cy="100" r="50" fill="#4CAF50"/>
-            <text x="100" y="110" text-anchor="middle" font-family="Arial" font-size="16" fill="white">AI</text>
-            <text x="100" y="180" text-anchor="middle" font-family="Arial" font-size="12" fill="#333">Sample Image</text>
-        </svg>'''
-        return base64.b64encode(svg_content.encode()).decode()
+        """Create a sample base64 encoded PNG image for multimodal testing."""
+        # A very small 1x1 transparent PNG image (base64 encoded)
+        # This is a minimal valid PNG.
+        return base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=")
     
     async def demo_multimodal_capabilities(self):
         """Demonstrate multimodal image analysis capabilities."""
@@ -202,9 +206,11 @@ class OllamaDemo:
             # Test LLM request through MCP
             self.print_subsection("MCP LLM Request")
             llm_message = MCPMessage(
+                channel="ollama",
                 message_type="llm_request",
                 data={
                     "prompt": "Explain the benefits of using MCP for LLM integration.",
+                    "model": "gemma3",
                     "temperature": 0.6,
                     "max_tokens": 200
                 }
@@ -216,11 +222,13 @@ class OllamaDemo:
             # Test chat request through MCP
             self.print_subsection("MCP Chat Request")
             chat_message = MCPMessage(
+                channel="ollama",
                 message_type="chat_request",
                 data={
                     "messages": [
                         {"role": "user", "content": "What is the Model Context Protocol?"}
                     ],
+                    "model": "gemma3",
                     "temperature": 0.5
                 }
             )
@@ -233,6 +241,7 @@ class OllamaDemo:
             
             # Get available models
             models_message = MCPMessage(
+                channel="ollama",
                 message_type="control",
                 data={"action": "get_available_models"}
             )
@@ -257,38 +266,44 @@ class OllamaDemo:
         try:
             # Get available tools
             self.print_subsection("Available Tools")
-            tools = self.mcp_client.get_available_tools()
-            
+            tools = await self.mcp_client.get_available_tools()
+
             print("Available MCP tools:")
-            for tool_name, tool_info in tools.items():
-                print(f"  - {tool_name}: {tool_info.get('description', 'No description')}")
+            for tool_info in tools:
+                print(f"  - {tool_info.get('name', 'Unknown')}: {tool_info.get('description', 'No description')}")
             
             # Test generate tool
             self.print_subsection("Generate Tool")
             generate_request = {
-                "tool": "ollama_generate",
-                "parameters": {
-                    "prompt": "Write a haiku about programming.",
-                    "temperature": 0.8
+                "method": "tools/call",
+                "params": {
+                    "name": "ollama_generate",
+                    "arguments": {
+                        "prompt": "Write a haiku about programming.",
+                        "temperature": 0.8
+                    }
                 }
             }
             
-            result = await self.mcp_client.process_request(generate_request)
-            if result.get('success'):
-                print(f"Generated text: {result.get('response')}")
+            result = await self.mcp_client.process_mcp_request(generate_request)
+            if result.get('completion'):
+                print(f"Generated text: {result.get('completion').get('text')}")
             else:
                 print(f"Error: {result.get('error')}")
             
             # Test list models tool
             self.print_subsection("List Models Tool")
             list_request = {
-                "tool": "ollama_list_models",
-                "parameters": {}
+                "method": "tools/call",
+                "params": {
+                    "name": "ollama_list_models",
+                    "arguments": {}
+                }
             }
             
-            result = await self.mcp_client.process_request(list_request)
-            if result.get('success'):
-                models = result.get('models', [])
+            result = await self.mcp_client.process_mcp_request(list_request)
+            if result.get('content'):
+                models = json.loads(result.get('content')[0].get('text', '[]'))
                 print(f"Found {len(models)} models via MCP client")
             else:
                 print(f"Error: {result.get('error')}")
@@ -310,14 +325,23 @@ class OllamaDemo:
             }
             
             # Initialize camper
-            camper = OllamaMultimodalCamper(camper_config)
+            party_box = MultimodalLocalDriver("demos/party_box")
+            camper = OllamaMultimodalCamper(party_box, camper_config)
             
             # Create sample multimodal content
             image_data = self.create_sample_image()
             content = MultimodalContent(
                 content_type=ContentType.IMAGE,
                 data=image_data,
-                metadata={"filename": "sample.svg", "format": "svg"}
+                metadata={"filename": "sample.png", "format": "png"},
+                mime_type="image/png",
+                encoding="base64"
+            )
+            multimodal_torch_obj = MultimodalTorch(
+                contents=[content],
+                primary_claim="Image analysis request",
+                source_campfire="ollama_demo",
+                channel="multimodal_analysis"
             )
             
             # Test camper capabilities
@@ -329,9 +353,8 @@ class OllamaDemo:
             
             # Test content processing
             self.print_subsection("Content Processing")
-            result = await camper.process_multimodal_content(
-                content,
-                "Describe what you see in this image and explain its purpose."
+            result = await camper.process(
+                multimodal_torch_obj
             )
             print(f"Processing result: {result}")
             
@@ -339,16 +362,16 @@ class OllamaDemo:
             self.print_subsection("Specific Operations")
             
             # Description
-            description = await camper.describe_image_content(content)
+            description = await camper.describe_image(multimodal_torch_obj.contents[0].data)
             print(f"Description: {description}")
             
             # Object identification
-            objects = await camper.identify_objects_content(content)
+            objects = await camper.identify_objects(multimodal_torch_obj.contents[0].data)
             print(f"Objects: {objects}")
             
             # Get camper statistics
             self.print_subsection("Camper Statistics")
-            stats = await camper.get_stats()
+            stats = camper.get_stats()
             print("Camper statistics:")
             for key, value in stats.items():
                 print(f"  {key}: {value}")
@@ -358,7 +381,7 @@ class OllamaDemo:
     
     async def run_full_demo(self):
         """Run the complete Ollama demonstration."""
-        print("🔥 Campfires Ollama Integration Demo 🔥")
+        print("Campfires Ollama Integration Demo")
         print("=" * 60)
         print("This demo showcases Ollama integration capabilities.")
         print("Make sure Ollama is running on localhost:11434 with models installed.")
@@ -373,7 +396,7 @@ class OllamaDemo:
                 print("   Run: ollama pull llava")
                 return
             
-            print(f"\n✅ Found {len(models)} Ollama models. Starting demo...")
+            print(f"Found {len(models)} Ollama models. Starting demo...")
             
             # Run all demo sections
             await self.demo_basic_text_generation()
@@ -385,7 +408,7 @@ class OllamaDemo:
             await self.demo_multimodal_camper()
             
             self.print_section("Demo Complete!")
-            print("🎉 All Ollama integration features demonstrated successfully!")
+            print("All Ollama integration features demonstrated successfully!")
             print("\nKey capabilities showcased:")
             print("  ✓ Text generation and chat")
             print("  ✓ Model management")
@@ -394,7 +417,7 @@ class OllamaDemo:
             print("  ✓ Camper framework integration")
             
         except Exception as e:
-            print(f"\n❌ Demo failed: {e}")
+            print(f"\nDemo failed: {e}")
             print("\nTroubleshooting:")
             print("  1. Ensure Ollama is running: ollama serve")
             print("  2. Install required models: ollama pull gemma3 && ollama pull llava")

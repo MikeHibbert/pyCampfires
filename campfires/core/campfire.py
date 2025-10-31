@@ -12,8 +12,10 @@ from pathlib import Path
 from .torch import Torch
 from .camper import Camper
 from ..party_box.box_driver import BoxDriver
-from ..mcp.protocol import MCPProtocol
-
+from ..mcp.protocol import MCPMessage, MCPProtocol
+from .orderer import Orderer, OrdererConfig
+from .team_auditor import TeamAuditor, TeamAuditorConfig
+from .graph_store import GraphStore
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +35,9 @@ class Campfire:
         campers: List[Camper],
         party_box: BoxDriver,
         mcp_protocol: Optional[MCPProtocol] = None,
-        config: Dict[str, Any] = None
+        graph_store: Optional[GraphStore] = None,
+        mode: str = "default", # New parameter for different modes
+        config: Optional[Dict[str, Any]] = None
     ):
         """
         Initialize a Campfire.
@@ -43,23 +47,35 @@ class Campfire:
             campers: List of campers in this campfire
             party_box: Storage driver for assets
             mcp_protocol: MCP protocol for communication
-            config: Additional configuration
+            mode: The operational mode of the campfire (e.g., "default", "team_rag")
+            config: Optional configuration dictionary for the campfire
         """
         self.name = name
         self.campers = campers
         self.party_box = party_box
         self.mcp_protocol = mcp_protocol
+        self.mode = mode
         self.config = config or {}
-        
+        self.graph_store = graph_store
+
+        self.orderer: Optional[Orderer] = None
+        if self.mode == "team_rag":
+            orderer_config = OrdererConfig()
+            self.orderer = Orderer(
+                party_box=self.party_box,
+                mcp_protocol=self.mcp_protocol,
+                auditor_class=TeamAuditor
+            )
+
         # State management
         self.is_running = False
         self.processed_torches: Dict[str, Torch] = {}
         self.torch_queue: asyncio.Queue = asyncio.Queue()
         
         # Configuration
-        self.max_concurrent_tasks = self.config.get('max_concurrent_tasks', 3)
-        self.torch_ttl = self.config.get('torch_ttl_hours', 24)
-        self.auto_cleanup = self.config.get('auto_cleanup', True)
+        self.max_concurrent_tasks = 3
+        self.torch_ttl = 24
+        self.auto_cleanup = True
         
         # Callbacks
         self.on_torch_processed: Optional[Callable[[Torch], None]] = None
@@ -69,9 +85,14 @@ class Campfire:
         for camper in self.campers:
             camper.set_party_box(self.party_box)
             camper.set_campfire_name(self.name)
+            # Provide a stable address and graph store for sharing
+            camper.set_address(f"camper:{self.name}:{camper.name}")
+            if self.graph_store:
+                camper.set_graph_store(self.graph_store)
     
     async def start(self) -> None:
-        """Start the campfire processing loop."""
+        """
+        Start the campfire processing loop."""
         if self.is_running:
             logger.warning(f"Campfire {self.name} is already running")
             return
@@ -103,7 +124,8 @@ class Campfire:
             self.is_running = False
     
     async def stop(self) -> None:
-        """Stop the campfire processing."""
+        """
+        Stop the campfire processing."""
         logger.info(f"Stopping campfire: {self.name}")
         self.is_running = False
         
@@ -140,8 +162,9 @@ class Campfire:
                             result_torches = [result_torches]
                         
                         for result_torch in result_torches:
-                            # Set source campfire
-                            result_torch.source_campfire = self.name
+                            # Set source campfire and channel, prioritizing original torch values
+                            result_torch.source_campfire = result_torch.source_campfire or torch.source_campfire or self.name
+                            result_torch.channel = result_torch.channel or torch.channel or self.name
                             result_torch.metadata['processed_by'] = camper.__class__.__name__
                             result_torch.metadata['parent_torch_id'] = torch.torch_id
                             
@@ -183,328 +206,69 @@ class Campfire:
         await self.torch_queue.put(torch)
         logger.debug(f"Added torch {torch.torch_id} to queue")
     
-    async def add_torch_from_data(
-        self,
-        claim: str,
-        path: Optional[str] = None,
-        confidence: float = 1.0,
-        metadata: Dict[str, Any] = None,
-        channel: str = "default"
-    ) -> Torch:
-        """
-        Create and add a torch from raw data.
-        
-        Args:
-            claim: Main claim or content
-            path: Optional path to asset
-            confidence: Confidence score (0.0 to 1.0)
-            metadata: Additional metadata
-            channel: MCP channel for the torch
-            
-        Returns:
-            Created torch
-        """
-        torch = Torch(
-            claim=claim,
-            path=path,
-            confidence=confidence,
-            metadata=metadata or {},
-            channel=channel,
-            source_campfire=self.name
-        )
-        
-        await self.add_torch(torch)
-        return torch
-    
     async def _processing_loop(self) -> None:
-        """Main processing loop for handling torches."""
+        """
+        Main processing loop for the campfire.
+        """
         while self.is_running:
             try:
-                # Wait for a torch with timeout
-                torch = await asyncio.wait_for(
-                    self.torch_queue.get(),
-                    timeout=1.0
-                )
-                
-                # Process the torch
+                torch = await self.torch_queue.get()
                 await self.process_torch(torch)
-                
-                # Mark task as done
-                self.torch_queue.task_done()
-                
-            except asyncio.TimeoutError:
-                # No torch available, continue loop
-                continue
+            except asyncio.CancelledError:
+                break
             except Exception as e:
                 logger.error(f"Error in processing loop: {e}")
-                await asyncio.sleep(1)
+                if self.on_error:
+                    self.on_error(e, None) # Pass None for torch if not available
     
     async def _cleanup_loop(self) -> None:
-        """Cleanup loop for removing old torches."""
+        """
+        Periodically cleans up old torches from processed_torches.
+        """
         while self.is_running:
-            try:
-                await asyncio.sleep(3600)  # Run every hour
-                await self._cleanup_old_torches()
-            except Exception as e:
-                logger.error(f"Error in cleanup loop: {e}")
-    
-    async def _cleanup_old_torches(self) -> None:
-        """Remove torches older than TTL."""
-        cutoff_time = datetime.utcnow() - timedelta(hours=self.torch_ttl)
-        
-        to_remove = []
-        for torch_id, torch in self.processed_torches.items():
-            if torch.timestamp < cutoff_time:
-                to_remove.append(torch_id)
-        
-        for torch_id in to_remove:
-            del self.processed_torches[torch_id]
-        
-        if to_remove:
-            logger.info(f"Cleaned up {len(to_remove)} old torches")
+            await asyncio.sleep(3600) # Clean up every hour
+            
+            cutoff_time = datetime.now() - timedelta(hours=self.torch_ttl)
+            torches_to_remove = [
+                torch_id for torch_id, torch in self.processed_torches.items()
+                if torch.timestamp < cutoff_time
+            ]
+            
+            for torch_id in torches_to_remove:
+                del self.processed_torches[torch_id]
+                logger.debug(f"Cleaned up old torch: {torch_id}")
     
     async def _setup_mcp_subscriptions(self) -> None:
-        """Setup MCP channel subscriptions."""
-        if not self.mcp_protocol:
-            return
-        
-        # Subscribe to channels this campfire should listen to
-        channels = self.config.get('subscribe_channels', [])
-        for channel in channels:
-            await self.mcp_protocol.subscribe(channel, self._handle_mcp_torch)
-    
-    async def _handle_mcp_torch(self, message: Dict[str, Any]) -> None:
         """
-        Handle incoming torch from MCP.
-        
-        Args:
-            message: MCP message containing torch data
+        Set up MCP subscriptions for incoming torches.
         """
-        try:
-            torch = Torch.from_mcp_message(message)
-            await self.add_torch(torch)
-        except Exception as e:
-            logger.error(f"Error handling MCP torch: {e}")
-    
-    async def _send_torch_via_mcp(self, torch: Torch) -> None:
-        """
-        Send a torch via MCP.
-        
-        Args:
-            torch: Torch to send
-        """
-        if not self.mcp_protocol:
-            return
-        
-        try:
-            message = torch.to_mcp_message()
-            await self.mcp_protocol.send_message(torch.channel, message)
-        except Exception as e:
-            logger.error(f"Error sending torch via MCP: {e}")
-    
-    def get_stats(self) -> Dict[str, Any]:
-        """
-        Get campfire statistics.
-        
-        Returns:
-            Dictionary with campfire stats
-        """
-        return {
-            'name': self.name,
-            'is_running': self.is_running,
-            'campers_count': len(self.campers),
-            'processed_torches_count': len(self.processed_torches),
-            'queue_size': self.torch_queue.qsize(),
-            'campers': [camper.__class__.__name__ for camper in self.campers]
-        }
-    
-    def __str__(self) -> str:
-        """String representation of the campfire."""
-        return f"Campfire({self.name}, {len(self.campers)} campers)"
-    
-    def __repr__(self) -> str:
-        """Detailed string representation."""
-        return (f"Campfire(name='{self.name}', "
-                f"campers={[c.__class__.__name__ for c in self.campers]}, "
-                f"running={self.is_running})")
-    
-    def to_yaml_config(self) -> Dict[str, Any]:
-        """
-        Export campfire configuration to a YAML-compatible dictionary.
-        
-        Returns:
-            Dictionary containing campfire configuration in YAML format
-        """
-        # Extract camper configurations
-        campers_config = []
-        for camper in self.campers:
-            camper_config = {
-                'type': camper.__class__.__name__,
-                'name': camper.name,
-                'config': camper.config.copy() if hasattr(camper, 'config') else {}
-            }
-            
-            # Add role information if available
-            if hasattr(camper, '_role'):
-                camper_config['role'] = camper._role
-            
-            # Add RAG document path if available
-            if hasattr(camper, '_rag_document_path') and camper._rag_document_path:
-                camper_config['rag_document_path'] = camper._rag_document_path
-            
-            # Add LLM configuration if available
-            if hasattr(camper, '_llm_config') and camper._llm_config:
-                camper_config['llm_config'] = {
-                    'model': camper._llm_config.model,
-                    'temperature': camper._llm_config.temperature,
-                    'max_tokens': camper._llm_config.max_tokens,
-                    'top_p': camper._llm_config.top_p,
-                    'frequency_penalty': camper._llm_config.frequency_penalty,
-                    'presence_penalty': camper._llm_config.presence_penalty
-                }
-            
-            # Add multimodal capabilities if available
-            if hasattr(camper, 'supported_content_types'):
-                camper_config['supported_content_types'] = [
-                    ct.value for ct in camper.supported_content_types
-                ]
-            
-            campers_config.append(camper_config)
-        
-        # Build the YAML configuration
-        yaml_config = {
-            'version': '1.0',
-            'kind': 'CampfireManifest',
-            'metadata': {
-                'name': self.name,
-                'description': f'Campfire configuration for {self.name}',
-                'created_at': datetime.utcnow().isoformat(),
-                'campfire_class': self.__class__.__name__
-            },
-            'spec': {
-                'name': self.name,
-                'campers': campers_config,
-                'config': self.config.copy(),
-                'environment': {
-                    'max_concurrent_tasks': str(self.max_concurrent_tasks),
-                    'torch_ttl_hours': str(self.torch_ttl),
-                    'auto_cleanup': str(self.auto_cleanup).lower()
-                },
-                'resources': {
-                    'memory': 'medium',  # Default values
-                    'cpu': 'medium',
-                    'timeout_minutes': 30
-                },
-                'networking': {},
-                'volumes': []
-            }
-        }
-        
-        # Add party box configuration if available
-        if self.party_box:
-            yaml_config['spec']['party_box'] = {
-                'type': self.party_box.__class__.__name__,
-                'config': getattr(self.party_box, 'config', {})
-            }
-        
-        # Add MCP configuration if available
         if self.mcp_protocol:
-            yaml_config['spec']['mcp'] = {
-                'enabled': True,
-                'channels': self.config.get('subscribe_channels', [])
-            }
-        
-        return yaml_config
+            # Subscribe to a channel for incoming torches
+            await self.mcp_protocol.subscribe(
+                channel=f"campfire.{self.name}.in",
+                callback=self._handle_mcp_torch
+            )
+            logger.info(f"Subscribed to MCP channel: campfire.{self.name}.in")
     
-    def save_to_yaml(self, file_path: str) -> None:
-        """
-        Save campfire configuration to a YAML file.
-        
-        Args:
-            file_path: Path where to save the YAML configuration file
-        """
-        yaml_config = self.to_yaml_config()
-        
-        # Ensure directory exists
-        path = Path(file_path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        
-        # Write YAML file
-        with open(file_path, 'w', encoding='utf-8') as f:
-            yaml.dump(yaml_config, f, default_flow_style=False, indent=2, sort_keys=False)
-        
-        logger.info(f"Campfire configuration saved to: {file_path}")
+    async def _send_torch_via_mcp(self, torch: Torch):
+        if self.mcp_protocol and self.mcp_protocol.is_running():
+            try:
+                await self.mcp_protocol.send_torch(torch)
+            except Exception as e:
+                logger.error(f"Failed to send torch {torch.torch_id} via MCP: {e}")
+        else:
+            logger.warning(f"MCP protocol not running, cannot send torch {torch.torch_id}")
     
-    @classmethod
-    def from_yaml_config(cls, yaml_config: Dict[str, Any], party_box: BoxDriver, 
-                        mcp_protocol: Optional[MCPProtocol] = None) -> 'Campfire':
+    async def _handle_mcp_torch(self, message: MCPMessage) -> None:
         """
-        Create a campfire instance from YAML configuration.
-        
-        Args:
-            yaml_config: YAML configuration dictionary
-            party_box: Party box driver instance
-            mcp_protocol: Optional MCP protocol instance
-            
-        Returns:
-            Campfire instance created from configuration
+        Handles incoming MCP messages containing torches.
         """
-        from .factory import CampfireFactory  # Import here to avoid circular imports
-        
-        spec = yaml_config.get('spec', {})
-        metadata = yaml_config.get('metadata', {})
-        
-        name = spec.get('name', metadata.get('name', 'unnamed_campfire'))
-        config = spec.get('config', {})
-        
-        # Extract environment variables
-        env = spec.get('environment', {})
-        if env:
-            config.update({
-                'max_concurrent_tasks': int(env.get('max_concurrent_tasks', 3)),
-                'torch_ttl_hours': int(env.get('torch_ttl_hours', 24)),
-                'auto_cleanup': env.get('auto_cleanup', 'true').lower() == 'true'
-            })
-        
-        # Create campers from configuration
-        campers = []
-        campers_config = spec.get('campers', [])
-        
-        for camper_config in campers_config:
-            # This would need to be implemented with a camper factory
-            # For now, we'll create a placeholder
-            logger.warning(f"Camper creation from YAML not fully implemented for type: {camper_config.get('type')}")
-        
-        # Create campfire instance
-        campfire = cls(
-            name=name,
-            campers=campers,
-            party_box=party_box,
-            mcp_protocol=mcp_protocol,
-            config=config
-        )
-        
-        return campfire
-    
-    @classmethod
-    def load_from_yaml(cls, file_path: str, party_box: BoxDriver, 
-                      mcp_protocol: Optional[MCPProtocol] = None) -> 'Campfire':
-        """
-        Load campfire configuration from a YAML file.
-        
-        Args:
-            file_path: Path to the YAML configuration file
-            party_box: Party box driver instance
-            mcp_protocol: Optional MCP protocol instance
-            
-        Returns:
-            Campfire instance loaded from file
-        """
-        with open(file_path, 'r', encoding='utf-8') as f:
-            yaml_config = yaml.safe_load(f)
-        
-        logger.info(f"Loading campfire configuration from: {file_path}")
-        return cls.from_yaml_config(yaml_config, party_box, mcp_protocol)
+        if message.message_type == "torch":
+            torch = Torch.from_mcp_message(message.to_dict())
+            await self.add_torch(torch)
+            logger.info(f"Received torch {torch.torch_id} from MCP channel: {message.channel}")
+        else:
+            logger.warning(f"Received unknown MCP message type: {message.message_type}")
 
 
 class CampfireManager:

@@ -100,8 +100,8 @@ class Torch(BaseModel):
             confidence=payload.get("confidence", 1.0),
             metadata=payload.get("metadata", {}),
             timestamp=message.get("timestamp", time.time()),
-            source_campfire=message.get("source", "unknown"),
-            channel=message.get("channel", "default"),
+            source_campfire=message.get("source", ""),
+            channel=message.get("channel", ""),
             torch_id=message.get("id")
         )
     

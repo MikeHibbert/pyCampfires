@@ -18,11 +18,29 @@ from .campfire import Campfire
 from .torch import Torch
 from .factory import CampfireFactory
 from .orchestration import (
-    TaskDecomposer, RoleAwareOrchestrator, SubTask, 
+    TaskDecomposer, RoleAwareOrchestrator,
     RoleRequirement, TaskComplexity
 )
+from campfires.party_box import LocalDriver
+from campfires.mcp.ollama_protocol import OllamaMCPProtocol
+from .enhanced_orchestration import SequentialOrchestrator
+
+
+@dataclass
+class SubTask:
+    id: str
+    description: str
+    required_role: str
+    dependencies: List[str]
+    priority: int
+    estimated_complexity: TaskComplexity
+    context_requirements: List[str]
+    success_criteria: str
+    source_campfire: str = field(default="")
+    channel: str = field(default="")
 from ..party_box.box_driver import BoxDriver
 from ..mcp.protocol import MCPProtocol
+from .enhanced_orchestration import SequentialOrchestrator
 
 
 logger = logging.getLogger(__name__)
@@ -89,34 +107,40 @@ class PartyOrchestrator:
     5. Aggregating results
     6. Handling failures and retries
     """
-    
-    def __init__(self, 
-                 party_box: BoxDriver,
-                 campfire_factory: CampfireFactory,
-                 mcp_protocol: Optional[MCPProtocol] = None,
-                 config: Dict[str, Any] = None):
+    def __init__(
+        self,
+        orchestrator: Union[SequentialOrchestrator, RoleAwareOrchestrator],
+        config: Dict[str, Any],
+        party_box: BoxDriver,
+        campfire_factory: CampfireFactory,
+        mcp_protocol: Optional[MCPProtocol] = None
+    ):
         """
         Initialize the PartyOrchestrator.
-        
+
         Args:
-            party_box: Shared Party Box for all campfires
-            campfire_factory: Factory for creating campfire instances
-            mcp_protocol: MCP protocol for communication
-            config: Orchestrator configuration
+            orchestrator: The underlying orchestrator (e.g., SequentialOrchestrator).
+            config: Configuration dictionary for the orchestrator.
+            party_box: The Party Box driver for asset management.
+            campfire_factory: The CampfireFactory instance for creating and managing campfires.
+            mcp_protocol: The MCP protocol instance for inter-campfire communication.
         """
+        self.orchestrator = orchestrator
+        self.role_orchestrator = orchestrator # Expose role_orchestrator
+        self.config = config
         self.party_box = party_box
         self.campfire_factory = campfire_factory
         self.mcp_protocol = mcp_protocol
-        self.config = config or {}
-        
-        # Initialize orchestration components
-        self.task_decomposer = TaskDecomposer(
-            config=self.config.get('decomposer', {}),
-            mcp_protocol=mcp_protocol
-        )
+        self.task_decomposer = TaskDecomposer(config=config)
+        self.role_orchestrator = RoleAwareOrchestrator(config=self.config, mcp_protocol=self.mcp_protocol)
+        self.active_execution_plans: Dict[str, ExecutionPlan] = {}
+        self.task_executions: Dict[str, TaskExecution] = {}
+        self.default_retry_limit = self.config.get("default_retry_limit", 3)
+        self.execution_topology = ExecutionTopology(self.config.get("execution_topology", "adaptive"))
+        self._execution_workers: List[asyncio.Task] = []
         self.role_orchestrator = RoleAwareOrchestrator(
-            config=self.config.get('role_orchestrator', {}),
-            mcp_protocol=mcp_protocol
+            config=self.config,
+            mcp_protocol=self.mcp_protocol
         )
         
         # Execution state
@@ -125,22 +149,41 @@ class PartyOrchestrator:
         self.execution_queue: asyncio.Queue = asyncio.Queue()
         
         # Configuration
-        self.max_concurrent_executions = self.config.get('max_concurrent_executions', 20)
         self.default_retry_limit = self.config.get('default_retry_limit', 3)
-        self.execution_timeout_minutes = self.config.get('execution_timeout_minutes', 60)
+        self.default_timeout_minutes = self.config.get('default_timeout_minutes', 60)
+        self.default_priority = self.config.get('default_priority', 5)
+        self.max_concurrent_executions = self.config.get('max_concurrent_executions', 5)
         
-        # Background tasks
-        self._execution_workers: List[asyncio.Task] = []
-        self._monitoring_task: Optional[asyncio.Task] = None
+        # Internal state
         self._is_running = False
-    
+        self._processing_task: Optional[asyncio.Task] = None
+        self._cleanup_task: Optional[asyncio.Task] = None
+        self._execution_workers: List[asyncio.Task] = []
+
     async def start(self):
         """Start the orchestrator and its background workers."""
         if self._is_running:
             return
         
         self._is_running = True
-        
+
+        # Start LLM client sessions
+        if self.task_decomposer.llm_client:
+            await self.task_decomposer.llm_client.start_session()
+        if self.role_orchestrator.llm_client:
+            await self.role_orchestrator.llm_client.start_session()
+
+        # Wait for MCP protocol to be running
+        if self.mcp_protocol:
+            await self.mcp_protocol.start()
+            timeout = 10  # seconds
+            start_time = asyncio.get_event_loop().time()
+            while not self.mcp_protocol.is_running:
+                if asyncio.get_event_loop().time() - start_time > timeout:
+                    raise RuntimeError("MCP Protocol transport did not start in time.")
+                await asyncio.sleep(0.1)  # Check every 100ms
+            logger.info("MCP Protocol transport is running.")
+
         # Start execution workers
         worker_count = self.config.get('worker_count', 5)
         for i in range(worker_count):
@@ -158,6 +201,12 @@ class PartyOrchestrator:
             return
         
         self._is_running = False
+        
+        # Close LLM client sessions
+        if self.task_decomposer.llm_client:
+            await self.task_decomposer.llm_client.close_session()
+        if self.role_orchestrator.llm_client:
+            await self.role_orchestrator.llm_client.close_session()
         
         # Cancel all workers
         for worker in self._execution_workers:
@@ -200,20 +249,27 @@ class PartyOrchestrator:
         context = context or {}
         
         try:
+            # Create a Torch object for decomposition
+            torch_task = Torch(
+                claim=task_description,
+                source_campfire="party_orchestrator",
+                channel="complex_task_execution",
+                metadata=context or {}
+            )
+
             # Analyze task complexity
-            complexity = await self.task_decomposer.analyze_task_complexity(task_description)
+            task_analysis = await self.task_decomposer.analyze_task(torch_task)
+            complexity = task_analysis.get('complexity', TaskComplexity.MODERATE)
             
             # Decompose task into subtasks
             subtasks = await self.task_decomposer.decompose_task(
-                task_description, 
-                complexity,
-                context
+                torch_task
             )
             
             # Generate role requirements for each subtask
             role_requirements = []
             for subtask in subtasks:
-                role_req = await self.role_orchestrator.generate_role_for_subtask(subtask)
+                role_req = await self.role_orchestrator.role_generator.generate_role_requirement(subtask)
                 role_requirements.append(role_req)
             
             # Create execution plan
@@ -468,12 +524,14 @@ class PartyOrchestrator:
             # Create torch for processing
             torch = Torch(
                 claim=subtask.description,
+                source_campfire=subtask.source_campfire if subtask.source_campfire else campfire_id,
+                channel=subtask.channel if subtask.channel else campfire_id,
                 confidence=0.8,
                 metadata={
                     'subtask_id': subtask.id,
                     'plan_id': plan_id,
                     'worker': worker_name,
-                    'context': subtask.context
+                    'context': subtask.context_requirements
                 }
             )
             

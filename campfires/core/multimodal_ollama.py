@@ -225,7 +225,7 @@ class MultimodalOllamaClient:
         model = model_name or self.config.vision_model
         return await self.client.get_model_info(model)
     
-    def get_multimodal_stats(self) -> Dict[str, Any]:
+    async def get_multimodal_stats(self) -> Dict[str, Any]:
         """Get multimodal client statistics."""
         return {
             **self.multimodal_stats,
@@ -247,6 +247,8 @@ class OllamaMultimodalCamper:
     
     def __init__(self, party_box, config: Dict[str, Any], role_requirement=None):
         """Initialize Ollama multimodal camper."""
+        super().__init__()
+        self.name = config.get('name')
         self.party_box = party_box
         self.config = config
         self.role_requirement = role_requirement
@@ -254,53 +256,61 @@ class OllamaMultimodalCamper:
         # Initialize Ollama multimodal client
         ollama_config = MultimodalOllamaConfig(
             base_url=config.get('ollama_base_url', 'http://localhost:11434'),
-            model=config.get('model', 'llama3.2'),
+            model=config.get('model', 'gemma3'),
             vision_model=config.get('vision_model', 'llava'),
             temperature=config.get('temperature', 0.7),
             max_tokens=config.get('max_tokens', None)
         )
         
-        self.ollama_client = MultimodalOllamaClient(ollama_config)
+        self.multimodal_client = MultimodalOllamaClient(ollama_config)
         self.stats = {
             'images_analyzed': 0,
             'text_extracted': 0,
             'objects_identified': 0,
             'comparisons_made': 0
         }
+
+    async def get_capabilities(self) -> List[str]:
+        """Return a list of capabilities supported by this camper."""
+        return [
+            "describe_image",
+            "identify_objects",
+            "process_multimodal_content"
+        ]
     
     async def __aenter__(self):
         """Async context manager entry."""
-        await self.ollama_client.__aenter__()
+        await self.multimodal_client.__aenter__()
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit."""
-        await self.ollama_client.__aexit__(exc_type, exc_val, exc_tb)
+        await self.multimodal_client.__aexit__(exc_type, exc_val, exc_tb)
     
     async def analyze_image(self, image_data: bytes, prompt: str) -> str:
         """Analyze an image with custom prompt."""
         self.stats['images_analyzed'] += 1
-        return await self.ollama_client.analyze_image(image_data, prompt)
+        return await self.multimodal_client.analyze_image(image_data, prompt)
     
     async def describe_image(self, image_data: bytes) -> str:
         """Generate detailed image description."""
         self.stats['images_analyzed'] += 1
-        return await self.ollama_client.describe_image(image_data)
+        return await self.multimodal_client.describe_image(image_data)
     
     async def extract_text(self, image_data: bytes) -> str:
         """Extract text from image."""
         self.stats['text_extracted'] += 1
-        return await self.ollama_client.extract_text_from_image(image_data)
+        return await self.multimodal_client.extract_text_from_image(image_data)
     
     async def identify_objects(self, image_data: bytes) -> str:
         """Identify objects in image."""
         self.stats['objects_identified'] += 1
-        return await self.ollama_client.identify_objects(image_data)
+        return await self.multimodal_client.identify_objects(image_data)
     
     async def compare_images(self, image1_data: bytes, image2_data: bytes) -> str:
         """Compare two images."""
         self.stats['comparisons_made'] += 1
-        return await self.ollama_client.compare_images(image1_data, image2_data)
+        return await self.multimodal_client.compare_images(image1_data, image2_data)
     
     async def process(self, torch):
         """Process a multimodal torch using Ollama vision capabilities."""
@@ -324,9 +334,9 @@ class OllamaMultimodalCamper:
             logger.error(f"Torch processing failed: {e}")
             return f"Error processing torch: {str(e)}"
     
-    def get_stats(self) -> Dict[str, Any]:
+    async def get_stats(self) -> Dict[str, Any]:
         """Get camper statistics."""
         return {
             **self.stats,
-            'multimodal_stats': self.ollama_client.get_multimodal_stats()
+            'multimodal_stats': await self.multimodal_client.get_multimodal_stats()
         }

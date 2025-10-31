@@ -122,6 +122,13 @@ config = {
 }
 
 camper = DynamicCamper(config)
+
+## API Notes
+
+- `OllamaClient.generate(prompt, temperature=None, max_tokens=None)` and `OllamaClient.chat(messages, temperature=None, max_tokens=None)` accept optional per-call `temperature` and `max_tokens` that override config values.
+- `OllamaClient.list_models()` uses HTTP `raise_for_status()` semantics; errors are raised as exceptions.
+- `OllamaClient.pull_model(model)` returns a dictionary with status information for easier programmatic handling.
+- MCP messages: `MCPMessage` supports a default `channel` value (`"default"`) if omitted; set a meaningful `channel` like `"ollama"` when integrating.
 ```
 
 ## Troubleshooting

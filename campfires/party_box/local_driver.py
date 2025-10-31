@@ -19,23 +19,49 @@ class LocalDriver(BoxDriver):
     duplicate writes and automatic cleanup of old files.
     """
     
-    def __init__(self, base_path: str = "./party_box", config: Dict[str, Any] = None):
+    def __init__(self, base_path: str = "./party_box", config: Dict[str, Any] = None, ollama_client=None):
         """
         Initialize the local driver.
         
         Args:
             base_path: Base directory for storing assets
             config: Additional configuration
+            ollama_client: Ollama client for LLM interactions
         """
         super().__init__(config)
         self.base_path = Path(base_path)
         self.base_path.mkdir(parents=True, exist_ok=True)
+        self.ollama_client = ollama_client
         
         # Create subdirectories for organization
         (self.base_path / "images").mkdir(exist_ok=True)
         (self.base_path / "audio").mkdir(exist_ok=True)
         (self.base_path / "documents").mkdir(exist_ok=True)
         (self.base_path / "other").mkdir(exist_ok=True)
+
+    async def query_llm(self, prompt: str, model: str, max_tokens: int, temperature: float) -> str:
+        """
+        Queries the Ollama LLM with the given prompt, temporarily overriding config for max_tokens and temperature.
+        """
+        if not self.ollama_client:
+            raise ValueError("Ollama client not initialized in LocalDriver.")
+
+        original_max_tokens = self.ollama_client.config.max_tokens
+        original_temperature = self.ollama_client.config.temperature
+
+        try:
+            self.ollama_client.config.max_tokens = max_tokens
+            self.ollama_client.config.temperature = temperature
+
+            response = await self.ollama_client.generate(
+                model=model,
+                prompt=prompt
+            )
+        finally:
+            self.ollama_client.config.max_tokens = original_max_tokens
+            self.ollama_client.config.temperature = original_temperature
+
+        return response
     
     async def put(self, key: str, data: Union[bytes, BinaryIO]) -> str:
         """

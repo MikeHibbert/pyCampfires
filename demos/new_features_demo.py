@@ -14,6 +14,13 @@ Run this demo to see how these components work together to create
 a sophisticated task orchestration system.
 """
 
+import logging
+
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
 import asyncio
 import logging
 from datetime import datetime
@@ -23,7 +30,7 @@ from pathlib import Path
 from campfires.core import (
     # Orchestration
     TaskComplexity, RoleAwareOrchestrator, TaskDecomposer,
-    DynamicRoleGenerator,
+    DynamicRoleGenerator, Torch,
     
     # Factory
     CampfireFactory, CampfireTemplate,
@@ -35,7 +42,7 @@ from campfires.core import (
     ManifestLoader, CampfireManifest,
     
     # Validation
-    DefaultAuditor, TaskRequirement,
+    DefaultAuditor, TaskRequirement, AuditContext,
     
     # Context management
     ContextPathManager, ContextType,
@@ -44,6 +51,10 @@ from campfires.core import (
     TorchRulesEngine, create_simple_rule, create_routing_rule,
     RuleType, OperatorType, ActionType
 )
+from campfires.core.ollama import OllamaConfig, OllamaClient, OllamaMCPClient
+from campfires.mcp.ollama_protocol import OllamaMCPProtocol
+from campfires.party_box import LocalDriver
+from campfires.core.torch_rules import TorchRulesEngine
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -72,13 +83,13 @@ class NewFeaturesDemo:
             await self.setup_components()
             
             # Demo 1: Role-aware orchestration
-            await self.demo_role_aware_orchestration()
+            # await self.demo_role_aware_orchestration()
             
             # Demo 2: CampfireFactory
-            await self.demo_campfire_factory()
+            # await self.demo_campfire_factory()
             
             # Demo 3: PartyOrchestrator
-            await self.demo_party_orchestrator()
+            # await self.demo_party_orchestrator()
             
             # Demo 4: ManifestLoader
             await self.demo_manifest_loader()
@@ -87,13 +98,13 @@ class NewFeaturesDemo:
             await self.demo_default_auditor()
             
             # Demo 6: Context path support
-            await self.demo_context_path_support()
+            # await self.demo_context_path_support()
             
             # Demo 7: Torch rules engine
             await self.demo_torch_rules_engine()
             
             # Demo 8: Integrated workflow
-            await self.demo_integrated_workflow()
+            # await self.demo_integrated_workflow()
             
             logger.info("✅ Demo completed successfully!")
             
@@ -106,166 +117,116 @@ class NewFeaturesDemo:
         logger.info("🔧 Setting up components...")
         
         # Initialize orchestrator
-        self.orchestrator = RoleAwareOrchestrator()
-        
-        # Initialize factory
-        self.factory = CampfireFactory()
+        orchestrator_config = {
+            "ollama_base_url": "http://localhost:11434",
+            "ollama_model": "gemma3:latest"
+        }
+        self.orchestrator = RoleAwareOrchestrator(config=orchestrator_config)
         
         # Initialize party orchestrator
-        self.party_orchestrator = PartyOrchestrator()
+        ollama_config = OllamaConfig(
+            base_url=orchestrator_config["ollama_base_url"],
+            model="gemma3:latest"
+        )
+        ollama_mcp_client = OllamaMCPClient(ollama_config)
+        ollama_mcp_protocol = OllamaMCPProtocol(ollama_config=ollama_config, campfire_name="PartyOrchestrator")
+        await ollama_mcp_protocol.start()
+
+        # Initialize factory
+        party_box = LocalDriver(ollama_client=ollama_mcp_client.client)
+        self.factory = CampfireFactory(party_box=party_box, config=orchestrator_config)
         
-        # Initialize manifest loader
+        self.party_orchestrator = PartyOrchestrator(
+            orchestrator=self.orchestrator,
+            config=orchestrator_config,
+            party_box=party_box,
+            campfire_factory=self.factory,
+            mcp_protocol=ollama_mcp_protocol
+        )
+        
+        # Initialize ManifestLoader, DefaultAuditor, and ContextPathManager
+        from campfires.zeitgeist.zeitgeist_engine import ZeitgeistEngine
+        from campfires.zeitgeist.config import ZeitgeistConfig
+
+        zeitgeist_config = ZeitgeistConfig(
+            preferred_search_engines=["duckduckgo"],
+            max_search_results=5,
+            cache_ttl=60 * 60 # 1 hour in seconds
+        )
+        self.zeitgeist_engine = ZeitgeistEngine(config=zeitgeist_config)
         self.manifest_loader = ManifestLoader()
-        
-        # Initialize auditor
-        self.auditor = DefaultAuditor()
-        
-        # Initialize context manager
+        self.auditor = DefaultAuditor(party_box=self.context_manager, zeitgeist_engine=self.zeitgeist_engine, config=None)
         self.context_manager = ContextPathManager()
+        self.torch_rules_engine = TorchRulesEngine()
         
-        # Initialize rules engine
-        self.rules_engine = TorchRulesEngine()
-        
-        logger.info("✅ Components initialized")
-    
-    async def demo_role_aware_orchestration(self):
-        """Demonstrate role-aware orchestration."""
-        logger.info("\n📋 Demo 1: Role-Aware Orchestration")
-        
-        # Define a complex task
-        task_description = """
-        Create a comprehensive data analysis pipeline that:
-        1. Collects data from multiple sources
-        2. Cleans and preprocesses the data
-        3. Performs statistical analysis
-        4. Generates visualizations
-        5. Creates a summary report
-        """
-        
-        # Decompose the task
-        decomposition_result = await self.orchestrator.decompose_task(
-            task_description=task_description,
-            complexity_hint=TaskComplexity.HIGH,
-            context={"domain": "data_analysis", "urgency": "medium"}
-        )
-        
-        logger.info(f"Task decomposed into {len(decomposition_result.subtasks)} subtasks:")
-        for i, subtask in enumerate(decomposition_result.subtasks, 1):
-            logger.info(f"  {i}. {subtask.title} (complexity: {subtask.complexity.value})")
-            logger.info(f"     Required role: {subtask.required_role.name}")
-        
-        # Generate dynamic roles
-        for subtask in decomposition_result.subtasks:
-            role_spec = await self.orchestrator.role_generator.generate_role_specification(
-                subtask.required_role,
-                {"task_context": subtask.description}
-            )
-            logger.info(f"Generated role spec for {subtask.required_role.name}:")
-            logger.info(f"  Skills: {', '.join(role_spec.required_skills)}")
-            logger.info(f"  Tools: {', '.join(role_spec.required_tools)}")
-    
-    async def demo_campfire_factory(self):
-        """Demonstrate CampfireFactory."""
-        logger.info("\n🏭 Demo 2: CampfireFactory")
-        
-        # Create a template for data analysis campfires
-        template = CampfireTemplate(
-            name="data_analysis_template",
-            description="Template for data analysis tasks",
-            base_config={
-                "model": "openrouter/free",
-                "temperature": 0.7,
-                "max_tokens": 2000
-            },
-            required_roles=["data_analyst", "statistician"],
-            resource_limits={
-                "max_memory_mb": 1024,
-                "max_execution_time_seconds": 300
-            }
-        )
-        
-        # Register the template
-        self.factory.register_template(template)
-        logger.info(f"Registered template: {template.name}")
-        
-        # Create campfire instances
-        instance1 = await self.factory.create_campfire(
-            template_name="data_analysis_template",
-            instance_id="analysis_001",
-            config_overrides={"temperature": 0.5}
-        )
-        
-        instance2 = await self.factory.create_campfire(
-            template_name="data_analysis_template",
-            instance_id="analysis_002",
-            config_overrides={"max_tokens": 1500}
-        )
-        
-        logger.info(f"Created campfire instances:")
-        logger.info(f"  - {instance1.instance_id} (status: {instance1.status.value})")
-        logger.info(f"  - {instance2.instance_id} (status: {instance2.status.value})")
-        
-        # List active instances
-        active_instances = self.factory.list_instances(status_filter="active")
-        logger.info(f"Active instances: {len(active_instances)}")
-    
-    async def demo_party_orchestrator(self):
-        """Demonstrate PartyOrchestrator."""
-        logger.info("\n🎉 Demo 3: PartyOrchestrator")
-        
-        # Create a party for parallel data processing
-        party_config = {
-            "party_id": "data_processing_party",
-            "description": "Parallel data processing workflow",
-            "topology": ExecutionTopology.PARALLEL,
-            "max_concurrent_tasks": 3
-        }
-        
-        # Initialize party
-        await self.party_orchestrator.initialize_party(party_config)
-        
-        # Add tasks to the party
-        tasks = [
+        # Define tasks as Torch objects (these will be implicitly handled by execute_complex_task)
+        # The claims and metadata will be passed as context to the orchestrator.
+        context_tasks = [
             {
-                "task_id": "collect_data",
-                "description": "Collect data from API",
-                "campfire_template": "data_collector",
-                "priority": 1
+                "claim": "Collect data from API",
+                "source_campfire": "data_processing_party",
+                "channel": "data_collection",
+                "metadata": {
+                    "task_id": "collect_data",
+                    "campfire_template": "data_collector",
+                    "priority": 1
+                }
             },
             {
-                "task_id": "clean_data",
-                "description": "Clean and preprocess data",
-                "campfire_template": "data_cleaner",
-                "priority": 2,
-                "dependencies": ["collect_data"]
+                "claim": "Clean and preprocess data",
+                "source_campfire": "data_processing_party",
+                "channel": "data_cleaning",
+                "metadata": {
+                    "task_id": "clean_data",
+                    "campfire_template": "data_cleaner",
+                    "priority": 2,
+                    "dependencies": ["collect_data"]
+                }
             },
             {
-                "task_id": "analyze_data",
-                "description": "Perform statistical analysis",
-                "campfire_template": "data_analyst",
-                "priority": 3,
-                "dependencies": ["clean_data"]
+                "claim": "Perform statistical analysis",
+                "source_campfire": "data_processing_party",
+                "channel": "data_analysis",
+                "metadata": {
+                    "task_id": "analyze_data",
+                    "campfire_template": "data_analyst",
+                    "priority": 3,
+                    "dependencies": ["clean_data"]
+                }
             }
         ]
-        
-        for task in tasks:
-            await self.party_orchestrator.add_task_to_party(
-                party_config["party_id"], 
-                task
-            )
-        
-        logger.info(f"Added {len(tasks)} tasks to party")
-        
-        # Execute the party (simulation)
-        logger.info("Executing party with parallel topology...")
-        execution_result = await self.party_orchestrator.execute_party(
-            party_config["party_id"]
+
+        # Define party configuration
+        party_config = {
+            "party_id": "financial_analysis_party",
+            "description": "Financial data analysis workflow",
+            "topology": ExecutionTopology.HIERARCHICAL,
+            "max_concurrent_tasks": 2
+        }
+
+        # Create execution plan using execute_complex_task
+        await self.party_orchestrator.start()
+        plan_id = await self.party_orchestrator.execute_complex_task(
+            task_description=party_config["description"],
+            topology=party_config["topology"],
+            priority=party_config.get("priority", 5), # Assuming a default priority if not in config
+            context={"tasks": context_tasks} # Pass the task details as context
         )
-        
-        logger.info(f"Party execution completed:")
-        logger.info(f"  - Success: {execution_result.success}")
-        logger.info(f"  - Tasks completed: {len(execution_result.completed_tasks)}")
-        logger.info(f"  - Execution time: {execution_result.execution_time_seconds:.2f}s")
+        logger.info(f"Created execution plan: {plan_id}")
+
+
+
+        # Wait for the plan to complete (or for a certain duration)
+        await asyncio.sleep(10)  # Wait for 10 seconds for demonstration
+
+        # Get status of the plan
+        plan_status = self.party_orchestrator.get_execution_status(plan_id)
+        logger.info(f"Execution plan {plan_id} status: {plan_status.get('status')}")
+        logger.info(f"Completed tasks: {len([t for t in plan_status.get('task_executions', []) if t.get('status') == 'completed'])}")
+
+        # Stop the orchestrator (optional, depending on demo flow)
+        await self.party_orchestrator.stop()
+        logger.info("PartyOrchestrator stopped.")
     
     async def demo_manifest_loader(self):
         """Demonstrate ManifestLoader."""
@@ -285,7 +246,7 @@ class NewFeaturesDemo:
           
           # Environment variables (like ENV in Dockerfile)
           env:
-            MODEL_NAME: "openrouter/free"
+            MODEL_NAME: "ollama/gemma3:latest"
             TEMPERATURE: "0.7"
             MAX_TOKENS: "2000"
           
@@ -327,6 +288,23 @@ class NewFeaturesDemo:
         
         # Load and validate manifest
         try:
+            # Create a temporary file for the manifest
+            temp_manifest_path = Path("./temp_manifest.yaml")
+            with open(temp_manifest_path, "w", encoding="utf-8") as f:
+                f.write(manifest_yaml)
+
+            manifest = self.manifest_loader.load_campfire_manifest(str(temp_manifest_path))
+            logger.info(f"Loaded manifest: {manifest.name}")
+            logger.info(f"  - Version: {manifest.version}")
+            logger.info(f"  - Campers: {len(manifest.campers)}")
+            
+            # Validate manifest
+            validation_result = self.manifest_loader.validate_manifest_file(str(temp_manifest_path), 'campfire')
+            if validation_result:
+                logger.info("✅ Manifest validation passed")
+            else:
+                logger.warning(f"⚠️ Manifest validation issues.")
+                
             manifest = self.manifest_loader.load_from_yaml(manifest_yaml)
             logger.info(f"Loaded manifest: {manifest.metadata['name']}")
             logger.info(f"  - Kind: {manifest.kind}")
@@ -342,6 +320,10 @@ class NewFeaturesDemo:
                 
         except Exception as e:
             logger.error(f"❌ Manifest loading failed: {e}")
+        finally:
+            # Clean up the temporary file
+            if temp_manifest_path.exists():
+                temp_manifest_path.unlink()
     
     async def demo_default_auditor(self):
         """Demonstrate DefaultAuditor."""
@@ -352,23 +334,20 @@ class NewFeaturesDemo:
             TaskRequirement(
                 id="req_001",
                 description="Must process at least 1000 records",
-                category="performance",
                 priority="high",
-                acceptance_criteria=["record_count >= 1000"]
+                validation_criteria=["record_count >= 1000"]
             ),
             TaskRequirement(
                 id="req_002", 
                 description="Must complete within 5 minutes",
-                category="performance",
                 priority="medium",
-                acceptance_criteria=["execution_time <= 300"]
+                validation_criteria=["execution_time <= 300"]
             ),
             TaskRequirement(
                 id="req_003",
                 description="Must achieve 95% accuracy",
-                category="quality",
                 priority="high",
-                acceptance_criteria=["accuracy >= 0.95"]
+                validation_criteria=["accuracy >= 0.95"]
             )
         ]
         
@@ -382,16 +361,18 @@ class NewFeaturesDemo:
         }
         
         # Audit the solution
-        audit_result = await self.auditor.audit_task_solution(
+        audit_context = AuditContext(
+            task_id="demo_task_001",  # Assign a unique ID for the demo task
             task_description="Process customer data and generate insights",
             requirements=requirements,
             solution_data=solution_data,
-            context={"domain": "data_processing", "environment": "production"}
+            execution_context={"domain": "data_processing", "environment": "production"}
         )
+        audit_result = await self.auditor.audit_task_solution(audit_context)
         
         logger.info(f"Audit completed:")
-        logger.info(f"  - Overall score: {audit_result.overall_score:.2f}")
-        logger.info(f"  - Requirements met: {audit_result.requirements_met}/{len(requirements)}")
+        logger.info(f"  - Overall score: {audit_result.confidence_score:.2f}")
+        logger.info(f"  - Requirements met: {len(audit_result.requirements_coverage)}/{len(requirements)}")
         logger.info(f"  - Issues found: {len(audit_result.issues)}")
         
         for issue in audit_result.issues:
@@ -402,43 +383,21 @@ class NewFeaturesDemo:
         logger.info("\n🗂️ Demo 6: Context Path Support")
         
         # Create context hierarchy
-        await self.context_manager.create_context_path(
-            "projects/data_analysis/customer_insights",
-            ContextType.PROJECT
+        self.context_manager.create_context_path(
+            "projects/data_analysis/customer_insights"
         )
         
-        await self.context_manager.create_context_path(
-            "projects/data_analysis/customer_insights/datasets",
-            ContextType.DATASET
+        self.context_manager.create_context_path(
+            "projects/data_analysis/customer_insights/datasets"
         )
         
-        await self.context_manager.create_context_path(
-            "projects/data_analysis/customer_insights/models",
-            ContextType.MODEL
+        self.context_manager.create_context_path(
+            "projects/data_analysis/customer_insights/models"
         )
         
         # Add context items
-        await self.context_manager.add_context_item(
-            "projects/data_analysis/customer_insights/datasets",
-            "customer_data.csv",
-            {
-                "description": "Customer transaction data",
-                "size_mb": 150,
-                "records": 50000,
-                "last_updated": "2024-01-15"
-            }
-        )
         
-        await self.context_manager.add_context_item(
-            "projects/data_analysis/customer_insights/models",
-            "churn_prediction_model.pkl",
-            {
-                "description": "Customer churn prediction model",
-                "accuracy": 0.94,
-                "model_type": "random_forest",
-                "trained_on": "2024-01-10"
-            }
-        )
+
         
         # Query context
         query_result = await self.context_manager.query_context(
@@ -480,8 +439,8 @@ class NewFeaturesDemo:
         )
         
         # Add rules to engine
-        self.rules_engine.add_rule(priority_rule)
-        self.rules_engine.add_rule(complexity_rule)
+        self.torch_rules_engine.add_rule(priority_rule)
+        self.torch_rules_engine.add_rule(complexity_rule)
         
         # Create test data
         test_cases = [
@@ -500,7 +459,7 @@ class NewFeaturesDemo:
                 source="demo"
             )
             
-            results = await self.rules_engine.execute_rules(context)
+            results = await self.torch_rules_engine.execute_rules(context)
             
             logger.info(f"Test case {i}: {test_data}")
             for result in results:
@@ -510,7 +469,7 @@ class NewFeaturesDemo:
                     logger.info(f"  → No routing decision")
         
         # Show engine metrics
-        metrics = self.rules_engine.get_metrics()
+        metrics = self.torch_rules_engine.get_metrics()
         logger.info(f"Rules engine metrics:")
         logger.info(f"  - Total rules: {metrics['rules_count']}")
         logger.info(f"  - Active rules: {metrics['active_rules_count']}")
@@ -550,8 +509,8 @@ class NewFeaturesDemo:
             action_target="big_data_pipeline"
         )
         
-        self.rules_engine.add_rule(size_rule)
-        classification_results = await self.rules_engine.execute_rules(context)
+        self.torch_rules_engine.add_rule(size_rule)
+        classification_results = await self.torch_rules_engine.execute_rules(context)
         
         pipeline_type = "standard_pipeline"
         for result in classification_results:
@@ -570,36 +529,39 @@ class NewFeaturesDemo:
         Deadline: {request_data['deadline_hours']} hours
         """
         
-        decomposition = await self.orchestrator.decompose_task(
-            task_description=task_description,
-            complexity_hint=TaskComplexity.HIGH,
-            context=request_data
+        decomposition = await self.orchestrator.task_decomposer.decompose_task(
+            torch=Torch(
+                claim=task_description,
+                source_campfire="new_features_demo",
+                channel="integrated_workflow",
+                metadata={
+                    "context": request_data,
+                    "complexity_hint": TaskComplexity.HIGHLY_COMPLEX.value
+                }
+            )
         )
         
-        logger.info(f"2. Task decomposed → {len(decomposition.subtasks)} subtasks")
+        logger.info(f"2. Task decomposed → {len(decomposition)} subtasks")
         
         # 3. Use factory to create specialized campfires
         analysis_template = CampfireTemplate(
-            name="financial_analysis_template",
-            description="Template for financial data analysis",
-            base_config={"model": "openrouter/free", "temperature": 0.3},
-            required_roles=["financial_analyst", "data_scientist"],
-            resource_limits={"max_memory_mb": 2048}
-        )
-        
-        self.factory.register_template(analysis_template)
-        
-        campfire_instances = []
-        for i, subtask in enumerate(decomposition.subtasks):
-            instance = await self.factory.create_campfire(
-                template_name="financial_analysis_template",
-                instance_id=f"finance_analysis_{i+1}",
-                config_overrides={"task_focus": subtask.title}
+                name="financial_analysis_template",
+                description="Template for financial data analysis",
+                camper_types=["dynamic"],
+                default_config={"llm_provider": "ollama", "ollama_model": "gemma3:latest", "temperature": 0.3},
+                resource_requirements={'memory': 'low', 'cpu': 'low'},
+                max_concurrent_tasks=3,
+                timeout_minutes=30
             )
-            campfire_instances.append(instance)
         
-        logger.info(f"3. Created {len(campfire_instances)} specialized campfires")
+        self.factory.add_template(analysis_template)
         
+
+        
+        context_tasks = [
+            {"id": subtask.id, "description": subtask.description} for subtask in decomposition
+        ]
+
         # 4. Use party orchestrator to coordinate execution
         party_config = {
             "party_id": "financial_analysis_party",
@@ -608,19 +570,14 @@ class NewFeaturesDemo:
             "max_concurrent_tasks": 2
         }
         
-        await self.party_orchestrator.initialize_party(party_config)
+        plan_id = await self.party_orchestrator.execute_complex_task(
+            task_description=party_config["description"],
+            topology=party_config["topology"],
+            priority=party_config.get("priority", 5),
+            context={"tasks": context_tasks}
+        )
         
-        for i, (subtask, instance) in enumerate(zip(decomposition.subtasks, campfire_instances)):
-            task_config = {
-                "task_id": f"subtask_{i+1}",
-                "description": subtask.description,
-                "campfire_instance": instance.instance_id,
-                "priority": 3 - i  # Higher priority for earlier tasks
-            }
-            await self.party_orchestrator.add_task_to_party(
-                party_config["party_id"],
-                task_config
-            )
+
         
         logger.info("4. Party orchestrator configured for hierarchical execution")
         
@@ -629,37 +586,25 @@ class NewFeaturesDemo:
             TaskRequirement(
                 id="deadline_req",
                 description=f"Must complete within {request_data['deadline_hours']} hours",
-                category="performance",
                 priority="high",
-                acceptance_criteria=[f"execution_time <= {request_data['deadline_hours'] * 3600}"]
+                validation_criteria=[f"execution_time <= {request_data['deadline_hours'] * 3600}"]
             ),
             TaskRequirement(
                 id="accuracy_req",
                 description="Must achieve high accuracy in predictions",
-                category="quality", 
                 priority="high",
-                acceptance_criteria=["prediction_accuracy >= 0.90"]
+                validation_criteria=["prediction_accuracy >= 0.90"]
             )
         ]
         
         logger.info(f"5. Defined {len(requirements)} validation requirements")
         
         # 6. Use context manager to organize results
-        await self.context_manager.create_context_path(
-            f"projects/financial_analysis/{context.execution_id}",
-            ContextType.PROJECT
+        self.context_manager.create_context_path(
+            f"projects/financial_analysis/{context.execution_id}"
         )
         
-        await self.context_manager.add_context_item(
-            f"projects/financial_analysis/{context.execution_id}",
-            "analysis_config.json",
-            {
-                "pipeline_type": pipeline_type,
-                "subtasks_count": len(decomposition.subtasks),
-                "campfires_created": len(campfire_instances),
-                "requirements": [req.id for req in requirements]
-            }
-        )
+
         
         logger.info("6. Context organized for result tracking")
         
@@ -673,16 +618,19 @@ class NewFeaturesDemo:
         }
         
         final_audit = await self.auditor.audit_task_solution(
-            task_description=task_description,
-            requirements=requirements,
-            solution_data=simulated_results,
-            context=request_data
+            AuditContext(
+                task_id="integrated_workflow_task",
+                task_description=task_description,
+                requirements=requirements,
+                solution_data=simulated_results,
+                execution_context=request_data
+            )
         )
         
         logger.info(f"7. Final audit completed:")
-        logger.info(f"   - Overall score: {final_audit.overall_score:.2f}")
-        logger.info(f"   - Requirements met: {final_audit.requirements_met}/{len(requirements)}")
-        logger.info(f"   - Success: {'✅' if final_audit.overall_score >= 0.8 else '❌'}")
+        logger.info(f"   - Overall score: {final_audit.confidence_score:.2f}")
+        logger.info(f"   - Requirements met: {sum(final_audit.requirements_coverage.values())}/{len(requirements)}")
+        logger.info(f"   - Success: {'✅' if final_audit.confidence_score >= 0.8 else '❌'}")
         
         logger.info("\n🎯 Integrated workflow completed successfully!")
         logger.info("All new features demonstrated working together in harmony.")

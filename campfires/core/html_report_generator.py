@@ -9,6 +9,7 @@ and detailed insights from the sequential orchestration process.
 import json
 import uuid
 from datetime import datetime
+from enum import Enum
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -1552,15 +1553,28 @@ class HTMLReportGenerator:
         </div>
         """
     
+    def _json_serializable_dict(self, obj):
+        if isinstance(obj, Enum):
+            return obj.value
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        if isinstance(obj, dict):
+            return {k: self._json_serializable_dict(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [self._json_serializable_dict(elem) for elem in obj]
+        return obj
+
     def _format_audit_results(self, audit_results: Dict[str, Any]) -> str:
         """Format audit results for display."""
         if not audit_results:
             return ""
         
+        serializable_audit_results = self._json_serializable_dict(audit_results)
+        
         return f"""
         <h5>🔍 Audit Results:</h5>
         <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin-top: 10px;">
-            <pre>{json.dumps(audit_results, indent=2)}</pre>
+            <pre>{json.dumps(serializable_audit_results, indent=2)}</pre>
         </div>
         """
     

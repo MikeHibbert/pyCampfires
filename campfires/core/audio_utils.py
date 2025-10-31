@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 class AudioFormatDetector:
     """
     Audio format detection utilities.
+    Returns rich dicts with both `format` and `mime_type` for ease of use.
     """
     
     # MIME type mappings
@@ -54,7 +55,7 @@ class AudioFormatDetector:
     }
     
     @classmethod
-    def detect_format_from_bytes(cls, data: bytes) -> Optional[str]:
+    def detect_format_from_bytes(cls, data: bytes) -> Dict[str, str]:
         """
         Detect audio format from byte data.
         
@@ -62,33 +63,42 @@ class AudioFormatDetector:
             data: Audio file bytes
             
         Returns:
-            Detected format or None
+            Dict with keys: `format` and `mime_type`.
         """
+        result = {"format": "unknown", "mime_type": "application/octet-stream"}
         if not data:
-            return None
+            return result
         
+        detected_format: Optional[str] = None
         # Check magic numbers
         for signature, format_name in cls.AUDIO_SIGNATURES.items():
             if data.startswith(signature):
                 # Special case for WAV files
                 if format_name == "wav" and b"WAVE" in data[:20]:
-                    return "wav"
+                    detected_format = "wav"
                 elif format_name == "wav":
                     continue  # Not a WAV file
-                return format_name
+                else:
+                    detected_format = format_name
+                break
         
-        # Use python-magic if available
-        if MAGIC_AVAILABLE:
+        # Use python-magic if available and not already detected
+        if not detected_format and MAGIC_AVAILABLE:
             try:
                 mime_type = magic.from_buffer(data, mime=True)
-                return cls.mime_type_to_format(mime_type)
+                detected_format = cls.mime_type_to_format(mime_type)
             except Exception as e:
                 logger.debug(f"Magic detection failed: {e}")
         
-        return None
+        if detected_format:
+            result["format"] = detected_format
+            mime = cls.format_to_mime_type(detected_format)
+            if mime:
+                result["mime_type"] = mime
+        return result
     
     @classmethod
-    def detect_format_from_file(cls, file_path: Union[str, Path]) -> Optional[str]:
+    def detect_format_from_file(cls, file_path: Union[str, Path]) -> Dict[str, str]:
         """
         Detect audio format from file.
         
@@ -96,44 +106,41 @@ class AudioFormatDetector:
             file_path: Path to audio file
             
         Returns:
-            Detected format or None
+            Dict with keys: `format` and `mime_type`.
         """
         file_path = Path(file_path)
+        result = {"format": "unknown", "mime_type": "application/octet-stream"}
         
-        # First try file extension
+        # First try file extension (avoid opening to prevent Windows handle conflicts)
         extension = file_path.suffix.lower().lstrip('.')
         if extension in ["mp3", "wav", "m4a", "aac", "ogg", "flac", "wma"]:
-            # Verify with content if possible
-            try:
-                with open(file_path, 'rb') as f:
-                    header = f.read(32)
-                    detected = cls.detect_format_from_bytes(header)
-                    if detected and detected == extension:
-                        return extension
-                    elif detected:
-                        logger.warning(f"File extension {extension} doesn't match detected format {detected}")
-                        return detected
-                    else:
-                        return extension  # Trust extension if detection fails
-            except Exception:
-                return extension
+            result["format"] = extension
+            mime = cls.format_to_mime_type(extension)
+            if mime:
+                result["mime_type"] = mime
+            return result
         
-        # Try MIME type detection
+        # Try MIME type detection from path
         mime_type, _ = mimetypes.guess_type(str(file_path))
         if mime_type:
-            return cls.mime_type_to_format(mime_type)
+            fmt = cls.mime_type_to_format(mime_type)
+            if fmt:
+                result["format"] = fmt
+                result["mime_type"] = mime_type
+                return result
         
-        # Try reading file content
+        # Fallback: attempt reading file content
         try:
             with open(file_path, 'rb') as f:
                 header = f.read(32)
-                return cls.detect_format_from_bytes(header)
+            byte_result = cls.detect_format_from_bytes(header)
+            return byte_result
         except Exception as e:
             logger.error(f"Error reading file for format detection: {e}")
-            return None
+            return result
     
     @classmethod
-    def detect_format_from_base64(cls, base64_data: str) -> Optional[str]:
+    def detect_format_from_base64(cls, base64_data: str) -> Dict[str, str]:
         """
         Detect audio format from base64 data.
         
@@ -141,7 +148,7 @@ class AudioFormatDetector:
             base64_data: Base64 encoded audio data
             
         Returns:
-            Detected format or None
+            Dict with keys: `format` and `mime_type`.
         """
         try:
             # Handle data URLs
@@ -152,7 +159,7 @@ class AudioFormatDetector:
                     mime_type = mime_part.replace('data:', '')
                     format_from_mime = cls.mime_type_to_format(mime_type)
                     if format_from_mime:
-                        return format_from_mime
+                        return {"format": format_from_mime, "mime_type": mime_type}
                 
                 # Extract base64 part
                 base64_data = base64_data.split(',', 1)[1]
@@ -163,7 +170,7 @@ class AudioFormatDetector:
             
         except Exception as e:
             logger.error(f"Error detecting format from base64: {e}")
-            return None
+            return {"format": "unknown", "mime_type": "application/octet-stream"}
     
     @classmethod
     def mime_type_to_format(cls, mime_type: str) -> Optional[str]:
@@ -217,7 +224,7 @@ class AudioValidator:
     
     MIN_DURATION = 0.1  # Minimum duration in seconds
     MAX_DURATION = 7200  # Maximum duration in seconds (2 hours)
-    MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
+    MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
     
     SUPPORTED_SAMPLE_RATES = [8000, 11025, 16000, 22050, 44100, 48000, 96000, 192000]
     SUPPORTED_CHANNELS = [1, 2, 6, 8]  # Mono, Stereo, 5.1, 7.1
@@ -232,107 +239,67 @@ class AudioValidator:
             format_name: Optional format name for additional validation
             
         Returns:
-            Validation results
+            Dict with keys: `is_valid`, `format`, `size`, and optional `error`.
         """
-        validation = {
-            "valid": True,
-            "errors": [],
-            "warnings": [],
-            "info": {}
-        }
+        size = len(data)
+        if size == 0:
+            return {"is_valid": False, "format": "unknown", "size": 0, "error": "empty audio data"}
         
-        # Check file size
-        file_size = len(data)
-        validation["info"]["file_size"] = file_size
+        # Enforce size limit first
+        if size > cls.MAX_FILE_SIZE:
+            return {"is_valid": False, "format": "unknown", "size": size, "error": "audio data too large"}
         
-        if file_size == 0:
-            validation["valid"] = False
-            validation["errors"].append("Empty audio data")
-            return validation
+        # Determine format
+        detected = AudioFormatDetector.detect_format_from_bytes(data)
+        fmt = format_name.lower() if format_name else detected.get("format", "unknown")
         
-        if file_size > cls.MAX_FILE_SIZE:
-            validation["valid"] = False
-            validation["errors"].append(f"File size {file_size} exceeds maximum {cls.MAX_FILE_SIZE}")
+        # Basic support check
+        supported_formats = ["mp3", "wav", "m4a", "aac", "ogg", "flac", "wma"]
+        if fmt not in supported_formats or fmt == "unknown":
+            return {"is_valid": False, "format": "unknown", "size": size, "error": "unsupported format"}
         
-        # Detect format if not provided
-        if not format_name:
-            format_name = AudioFormatDetector.detect_format_from_bytes(data)
-            if not format_name:
-                validation["warnings"].append("Could not detect audio format")
-            else:
-                validation["info"]["detected_format"] = format_name
+        # Perform minimal header validation
+        header_validation = cls._validate_format_specific(data[:1024], fmt)
+        has_errors = bool(header_validation.get("errors"))
+        if has_errors:
+            return {"is_valid": False, "format": fmt, "size": size, "error": "; ".join(header_validation.get("errors", []))}
         
-        # Format-specific validation
-        if format_name:
-            format_validation = cls._validate_format_specific(data, format_name)
-            validation["errors"].extend(format_validation.get("errors", []))
-            validation["warnings"].extend(format_validation.get("warnings", []))
-            validation["info"].update(format_validation.get("info", {}))
-        
-        return validation
+        return {"is_valid": True, "format": fmt, "size": size}
     
     @classmethod
     def validate_audio_file(cls, file_path: Union[str, Path]) -> Dict[str, Any]:
         """
-        Validate audio file.
-        
-        Args:
-            file_path: Path to audio file
-            
-        Returns:
-            Validation results
+        Validate audio file, returning a simple dict compatible with tests.
         """
         file_path = Path(file_path)
-        
-        validation = {
-            "valid": True,
-            "errors": [],
-            "warnings": [],
-            "info": {"file_path": str(file_path)}
-        }
-        
-        # Check if file exists
         if not file_path.exists():
-            validation["valid"] = False
-            validation["errors"].append(f"File does not exist: {file_path}")
-            return validation
+            return {"is_valid": False, "format": "unknown", "size": 0, "error": f"file not found: {file_path}"}
         
-        # Check file size
-        file_size = file_path.stat().st_size
-        validation["info"]["file_size"] = file_size
+        size = file_path.stat().st_size
+        if size == 0:
+            return {"is_valid": False, "format": "unknown", "size": 0, "error": "empty audio file"}
+        if size > cls.MAX_FILE_SIZE:
+            return {"is_valid": False, "format": "unknown", "size": size, "error": "file too large"}
         
-        if file_size == 0:
-            validation["valid"] = False
-            validation["errors"].append("Empty audio file")
-            return validation
-        
-        if file_size > cls.MAX_FILE_SIZE:
-            validation["valid"] = False
-            validation["errors"].append(f"File size {file_size} exceeds maximum {cls.MAX_FILE_SIZE}")
-        
-        # Read and validate content
+        # Read header and detect format
         try:
             with open(file_path, 'rb') as f:
-                header = f.read(1024)  # Read first 1KB for validation
-                
-            format_name = AudioFormatDetector.detect_format_from_file(file_path)
-            if format_name:
-                validation["info"]["detected_format"] = format_name
-            else:
-                validation["warnings"].append("Could not detect audio format")
-            
-            # Basic header validation
-            if format_name:
-                format_validation = cls._validate_format_specific(header, format_name)
-                validation["errors"].extend(format_validation.get("errors", []))
-                validation["warnings"].extend(format_validation.get("warnings", []))
-                validation["info"].update(format_validation.get("info", {}))
-                
+                header = f.read(1024)
         except Exception as e:
-            validation["valid"] = False
-            validation["errors"].append(f"Error reading file: {e}")
+            return {"is_valid": False, "format": "unknown", "size": size, "error": f"error reading file: {e}"}
         
-        return validation
+        fmt_info = AudioFormatDetector.detect_format_from_file(file_path)
+        fmt = fmt_info.get("format", "unknown") if isinstance(fmt_info, dict) else str(fmt_info or "unknown")
+        
+        if fmt == "unknown":
+            return {"is_valid": False, "format": fmt, "size": size, "error": "unsupported format"}
+        
+        header_validation = cls._validate_format_specific(header, fmt)
+        errors = header_validation.get("errors", [])
+        if errors:
+            return {"is_valid": False, "format": fmt, "size": size, "error": "; ".join(errors)}
+        
+        return {"is_valid": True, "format": fmt, "size": size}
     
     @classmethod
     def _validate_format_specific(cls, data: bytes, format_name: str) -> Dict[str, Any]:
@@ -484,7 +451,7 @@ class AudioConverter:
         return base64.b64decode(base64_data)
     
     @staticmethod
-    def file_to_base64(file_path: Union[str, Path], include_mime: bool = True) -> str:
+    def file_to_base64(file_path: Union[str, Path], include_mime: bool = False) -> str:
         """
         Convert audio file to base64.
         
@@ -501,8 +468,12 @@ class AudioConverter:
             audio_bytes = f.read()
         
         if include_mime:
-            format_name = AudioFormatDetector.detect_format_from_file(file_path)
-            mime_type = AudioFormatDetector.format_to_mime_type(format_name) if format_name else None
+            format_info = AudioFormatDetector.detect_format_from_file(file_path)
+            mime_type = None
+            if isinstance(format_info, dict):
+                mime_type = format_info.get("mime_type")
+            else:
+                mime_type = AudioFormatDetector.format_to_mime_type(str(format_info))
             return AudioConverter.bytes_to_base64(audio_bytes, mime_type)
         else:
             return base64.b64encode(audio_bytes).decode('utf-8')
@@ -544,7 +515,7 @@ class AudioMetrics:
         return original_size / compressed_size
     
     @staticmethod
-    def estimate_bitrate(file_size: int, duration: float) -> Optional[int]:
+    def estimate_bitrate(file_size: int, duration: float) -> Optional[float]:
         """
         Estimate bitrate from file size and duration.
         
@@ -553,45 +524,33 @@ class AudioMetrics:
             duration: Duration in seconds
             
         Returns:
-            Estimated bitrate in kbps
+            Estimated bitrate in bits per second
         """
         if duration <= 0:
             return None
         
-        # Convert to bits and calculate bitrate
+        # Convert to bits and calculate bitrate (bps)
         bits = file_size * 8
         bitrate_bps = bits / duration
-        bitrate_kbps = int(bitrate_bps / 1000)
-        
-        return bitrate_kbps
+        return bitrate_bps
     
     @staticmethod
-    def classify_quality_by_bitrate(bitrate: int, format_name: str = None) -> str:
+    def classify_audio_quality(bitrate: int, sample_rate: int) -> str:
         """
-        Classify audio quality based on bitrate.
+        Classify audio quality using simple thresholds.
         
         Args:
-            bitrate: Bitrate in kbps
-            format_name: Audio format for context
+            bitrate: Bitrate in bits per second
+            sample_rate: Sample rate in Hz
             
         Returns:
-            Quality classification
+            "high", "medium", or "low"
         """
-        if format_name and format_name.lower() in ["flac", "wav"]:
-            return "lossless"
-        
-        if bitrate >= 320:
-            return "excellent"
-        elif bitrate >= 256:
-            return "very_good"
-        elif bitrate >= 192:
-            return "good"
-        elif bitrate >= 128:
-            return "acceptable"
-        elif bitrate >= 96:
-            return "fair"
-        else:
-            return "poor"
+        if bitrate >= 256_000 and sample_rate >= 44_100:
+            return "high"
+        if bitrate >= 96_000:
+            return "medium"
+        return "low"
     
     @staticmethod
     def get_format_characteristics(format_name: str) -> Dict[str, Any]:

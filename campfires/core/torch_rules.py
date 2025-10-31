@@ -287,16 +287,24 @@ class RuleConditionEvaluator:
         """Evaluate operator-specific condition."""
         operator_type = condition.operator
         expected_value = condition.value
-        
+
         # Handle case sensitivity for string operations
         if isinstance(field_value, str) and isinstance(expected_value, str) and not condition.case_sensitive:
             field_value = field_value.lower()
             expected_value = expected_value.lower()
-        
+
+        # Type conversion for 'complexity' field when comparing with integers
+        if 'complexity' in condition.field and isinstance(expected_value, int):
+            try:
+                field_value = int(field_value)
+            except (ValueError, TypeError):
+                logger.warning(f"Could not convert complexity field_value '{field_value}' to int for comparison.")
+                return False # Cannot compare if conversion fails
+
         # Basic comparison operators
         if operator_type in self._operators:
             return self._operators[operator_type](field_value, expected_value)
-        
+
         # String-specific operators
         elif operator_type == OperatorType.CONTAINS:
             return isinstance(field_value, str) and expected_value in field_value

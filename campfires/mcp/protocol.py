@@ -22,11 +22,12 @@ class MCPMessage:
     
     def __init__(
         self,
-        channel: str,
-        data: Dict[str, Any],
+        channel: str = "default",
+        data: Dict[str, Any] = None,
         message_type: str = "torch",
         timestamp: Optional[datetime] = None,
-        message_id: Optional[str] = None
+        message_id: Optional[str] = None,
+        source: Optional[str] = None
     ):
         """
         Initialize an MCP message.
@@ -37,12 +38,14 @@ class MCPMessage:
             message_type: Type of message (torch, control, etc.)
             timestamp: Message timestamp
             message_id: Unique message identifier
+            source: Name of the campfire that sent this message
         """
         self.channel = channel
-        self.data = data
+        self.data = data or {}
         self.message_type = message_type
         self.timestamp = timestamp or datetime.utcnow()
         self.message_id = message_id or self._generate_id()
+        self.source = source
     
     def _generate_id(self) -> str:
         """Generate a unique message ID."""
@@ -56,19 +59,22 @@ class MCPMessage:
             'data': self.data,
             'message_type': self.message_type,
             'timestamp': self.timestamp.isoformat(),
-            'message_id': self.message_id
+            'message_id': self.message_id,
+            'source': self.source
         }
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'MCPMessage':
         """Create message from dictionary."""
-        timestamp = datetime.fromisoformat(data['timestamp'])
+        timestamp_value = data.get('timestamp')
+        timestamp = datetime.fromisoformat(timestamp_value) if isinstance(timestamp_value, str) else None
         return cls(
-            channel=data['channel'],
-            data=data['data'],
+            channel=data.get('channel', 'default'),
+            data=data.get('data', {}),
             message_type=data.get('message_type', 'torch'),
             timestamp=timestamp,
-            message_id=data.get('message_id')
+            message_id=data.get('message_id'),
+            source=data.get('source')
         )
     
     def to_json(self) -> str:
@@ -191,12 +197,13 @@ class MCPProtocol:
     Main MCP protocol implementation.
     """
     
-    def __init__(self, transport: Optional[Transport] = None):
+    def __init__(self, transport: Optional[Transport] = None, campfire_name: Optional[str] = None):
         """
         Initialize the MCP protocol.
         
         Args:
             transport: Transport layer for message delivery
+            campfire_name: The name of the campfire using this protocol
         """
         self.transport = transport or AsyncQueueTransport()
         self.channel_manager = ChannelManager()
@@ -205,6 +212,7 @@ class MCPProtocol:
         
         # Setup default message handlers
         self._setup_default_handlers()
+        self.campfire_name = campfire_name
     
     def _setup_default_handlers(self) -> None:
         """Setup default message type handlers."""
@@ -224,11 +232,11 @@ class MCPProtocol:
             logger.warning("MCP protocol is already running")
             return
         
-        self.is_running = True
         logger.info("Starting MCP protocol")
         
         # Start transport
         await self.transport.start()
+        self.is_running = True
         
         # Start message processing loop
         asyncio.create_task(self._message_processing_loop())
@@ -255,7 +263,8 @@ class MCPProtocol:
             channel=channel,
             data=data,
             message_type=message_type,
-            message_id=message_id
+            message_id=message_id,
+            source=self.campfire_name
         )
         
         await self.transport.send(message.to_dict())
@@ -289,6 +298,7 @@ class MCPProtocol:
                 message_data = await self.transport.receive()
                 
                 if message_data:
+                    print(f"Type of message_data before from_dict: {type(message_data)}")
                     message = MCPMessage.from_dict(message_data)
                     await self._process_message(message)
                 

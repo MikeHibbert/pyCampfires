@@ -2,96 +2,93 @@
 Enhanced local driver with multimodal support and metadata extraction.
 """
 
+import asyncio
 import json
 import logging
+import os
+import shutil
+import tempfile
+import mimetypes
+import aiofiles
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Union, Tuple
+from typing import Any, Dict, List, Optional, Union, Tuple
 from datetime import datetime
 
-from .local_driver import LocalDriver
+from campfires.party_box.local_driver import LocalDriver
 from .metadata_extractor import MetadataExtractor, ThumbnailGenerator
+
 
 logger = logging.getLogger(__name__)
 
 
 class MultimodalLocalDriver(LocalDriver):
     """
-    Enhanced local driver with multimodal support and metadata extraction.
-    
-    Extends LocalDriver to provide:
-    - Automatic metadata extraction for all content types
-    - Thumbnail generation for supported formats
-    - Enhanced asset organization with metadata indexing
-    - Content deduplication based on fingerprints
-    - Rich asset search and filtering capabilities
+    A local filesystem driver for multimodal assets, extending LocalDriver.
+    Handles metadata extraction, thumbnail generation, indexing, and deduplication.
     """
-    
-    def __init__(self, base_path: str, enable_thumbnails: bool = True, 
-                 enable_deduplication: bool = True, metadata_cache_size: int = 1000):
-        """
-        Initialize multimodal local driver.
-        
-        Args:
-            base_path: Base directory for asset storage
-            enable_thumbnails: Whether to generate thumbnails
-            enable_deduplication: Whether to enable content deduplication
-            metadata_cache_size: Size of metadata cache
-        """
-        super().__init__(base_path)
-        
-        self.enable_thumbnails = enable_thumbnails
-        self.enable_deduplication = enable_deduplication
-        self.metadata_cache_size = metadata_cache_size
-        
-        # Additional directories for multimodal support
+
+    def __init__(self, base_path: str = "./multimodal_party_box", config: Optional[Dict[str, Any]] = None, ollama_client=None):
+        super().__init__(base_path, config, ollama_client)
         self.metadata_dir = self.base_path / "metadata"
         self.thumbnails_dir = self.base_path / "thumbnails"
         self.index_dir = self.base_path / "indexes"
-        
-        # Create additional directories
-        for directory in [self.metadata_dir, self.thumbnails_dir, self.index_dir]:
-            directory.mkdir(exist_ok=True)
-        
-        # In-memory caches
-        self._metadata_cache = {}
-        self._fingerprint_index = {}
-        
-        # Load existing indexes
+
+        self.metadata_dir.mkdir(parents=True, exist_ok=True)
+        self.thumbnails_dir.mkdir(exist_ok=True)
+        self.index_dir.mkdir(exist_ok=True)
+
+        self.enable_thumbnails = config.get("enable_thumbnails", True) if config else True
+        self.enable_deduplication = config.get("enable_deduplication", True) if config else True
+        self.metadata_cache_size = config.get("metadata_cache_size", 1000) if config else 1000
+
+        self._metadata_cache: Dict[str, Dict[str, Any]] = {}
+        self._inverted_index: Dict[str, List[str]] = {}
+        self._fingerprint_index: Dict[str, str] = {}
+
         self._load_indexes()
-    
-    def put(self, content: bytes, filename: str = None, metadata: Dict[str, Any] = None) -> str:
+
+    async def put(self, content: Union[Path, str, bytes], content_type: str, filename: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None) -> str:
         """
-        Store content with enhanced multimodal support.
-        
+        Store a multimodal asset.
+
         Args:
-            content: File content as bytes
-            filename: Optional filename for metadata extraction
-            metadata: Optional additional metadata
-            
+            content: The asset content, can be a Path object, a string path, or bytes.
+            content_type: The MIME type of the content (e.g., 'image/png', 'audio/mpeg').
+            filename: Optional original filename. If not provided, a name will be derived or defaulted.
+            metadata: Optional dictionary of additional metadata to store with the asset.
+
         Returns:
-            Content hash
+            The content hash of the stored asset.
         """
-        # Get basic hash and store content
-        content_hash = super().put(content, filename)
-        
+        content_bytes: bytes
+        local_driver_key: str
+
+        if isinstance(content, Path):
+            async with aiofiles.open(content, 'rb') as f:
+                content_bytes = await f.read()
+            local_driver_key = filename if filename else content.name
+        elif isinstance(content, str):
+            content_path = Path(content)
+            async with aiofiles.open(content_path, 'rb') as f:
+                content_bytes = await f.read()
+            local_driver_key = filename if filename else content_path.name
+        else:  # content is bytes
+            content_bytes = content
+            local_driver_key = filename if filename else f"asset.{mimetypes.guess_extension(content_type) or 'bin'}"
+
+        content_hash = self.generate_hash(content_bytes)
+
+        # Pass the content_hash as the key to the super.put method, ensuring it has an extension
+        # The local_driver_key is used for determining the subdirectory and original filename in LocalDriver.put
+        await super().put(local_driver_key, content_bytes)
+
+        # Extract and merge metadata
+        extracted_metadata = await self._extract_and_merge_metadata(content_bytes, content_type, metadata)
+        extracted_metadata['content_hash'] = content_hash
+        extracted_metadata['stored_timestamp'] = datetime.utcnow().isoformat()
+
         try:
-            # Extract metadata
-            file_path = Path(filename) if filename else Path(f"unknown.{content_hash[:8]}")
-            extracted_metadata = MetadataExtractor.extract_metadata(file_path, content)
-            
-            # Merge with provided metadata
-            if metadata:
-                extracted_metadata.update(metadata)
-            
-            # Add storage information
-            extracted_metadata.update({
-                'content_hash': content_hash,
-                'storage_path': str(self._get_asset_path(content_hash)),
-                'stored_timestamp': datetime.utcnow().isoformat(),
-                'driver_version': '2.0.0'
-            })
-            
-            # Check for duplicates if enabled
+            # Deduplication logic
             if self.enable_deduplication:
                 fingerprint = MetadataExtractor.generate_content_fingerprint(extracted_metadata)
                 if fingerprint in self._fingerprint_index:
@@ -104,21 +101,21 @@ class MultimodalLocalDriver(LocalDriver):
                     self._fingerprint_index[fingerprint] = content_hash
                     extracted_metadata['content_fingerprint'] = fingerprint
                     extracted_metadata['is_duplicate'] = False
-            
+
             # Store metadata
-            self._store_metadata(content_hash, extracted_metadata)
-            
+            await self._store_metadata(content_hash, extracted_metadata)
+
             # Generate thumbnail if enabled and supported
             if self.enable_thumbnails:
-                self._generate_and_store_thumbnail(content_hash, content, extracted_metadata)
-            
+                await self._generate_and_store_thumbnail(content_hash, content_bytes, extracted_metadata)
+
             # Update indexes
-            self._update_indexes(content_hash, extracted_metadata)
-            
+            await self._update_indexes(content_hash, extracted_metadata)
+
             # Cache metadata
             if len(self._metadata_cache) < self.metadata_cache_size:
                 self._metadata_cache[content_hash] = extracted_metadata
-            
+
         except Exception as e:
             logger.error(f"Error processing multimodal content {content_hash}: {e}")
             # Store basic metadata as fallback
@@ -127,498 +124,288 @@ class MultimodalLocalDriver(LocalDriver):
                 'error': str(e),
                 'stored_timestamp': datetime.utcnow().isoformat()
             }
-            self._store_metadata(content_hash, basic_metadata)
-        
+            await self._store_metadata(content_hash, basic_metadata)
+
         return content_hash
-    
-    def get_metadata(self, content_hash: str) -> Optional[Dict[str, Any]]:
+
+    async def get(self, content_hash: str) -> Path:
         """
-        Get metadata for an asset.
-        
+        Retrieve the file path for a stored asset.
+
         Args:
-            content_hash: Content hash
-            
+            content_hash: The content hash of the asset.
+
         Returns:
-            Metadata dictionary or None if not found
+            A Path object pointing to the asset file.
+
+        Raises:
+            FileNotFoundError: If the asset is not found.
         """
-        # Check cache first
+        metadata = self.get_metadata(content_hash)
+        if metadata and 'file_path' in metadata:
+            file_path = Path(metadata['file_path'])
+            if file_path.exists():
+                return file_path
+
+        # Fallback: search all subdirectories if metadata is missing or file_path is invalid
+        for subdir in ["images", "audio", "documents", "other"]:
+            subdir_path = self.base_path / subdir
+            for file_in_subdir in subdir_path.glob(f"{content_hash}.*"):
+                if file_in_subdir.is_file():
+                    return file_in_subdir
+
+        raise FileNotFoundError(f"Asset with hash {content_hash} not found.")
+
+    async def get_metadata(self, content_hash: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieves metadata for a given content hash.
+        """
         if content_hash in self._metadata_cache:
             return self._metadata_cache[content_hash]
-        
-        # Load from disk
+
+        metadata = await self.get_metadata(content_hash)
         metadata_path = self.metadata_dir / f"{content_hash}.json"
         if metadata_path.exists():
             try:
-                with open(metadata_path, 'r', encoding='utf-8') as f:
-                    metadata = json.load(f)
-                
-                # Cache if space available
-                if len(self._metadata_cache) < self.metadata_cache_size:
-                    self._metadata_cache[content_hash] = metadata
-                
-                return metadata
+                async with aiofiles.open(metadata_path, 'r', encoding='utf-8') as f:
+                    metadata = json.loads(await f.read())
+                    if len(self._metadata_cache) < self.metadata_cache_size:
+                        self._metadata_cache[content_hash] = metadata
+                    return metadata
             except Exception as e:
                 logger.error(f"Error loading metadata for {content_hash}: {e}")
-        
         return None
-    
-    def get_thumbnail(self, content_hash: str, size: Tuple[int, int] = None) -> Optional[bytes]:
+
+    async def exists(self, content_hash: str) -> bool:
         """
-        Get thumbnail for an asset.
-        
-        Args:
-            content_hash: Content hash
-            size: Optional thumbnail size (width, height)
-            
-        Returns:
-            Thumbnail data as bytes or None if not available
+        Check if an asset with the given content hash exists.
         """
-        size_str = f"{size[0]}x{size[1]}" if size else "200x200"
-        thumbnail_path = self.thumbnails_dir / f"{content_hash}_{size_str}.jpg"
-        
-        if thumbnail_path.exists():
-            try:
-                with open(thumbnail_path, 'rb') as f:
-                    return f.read()
-            except Exception as e:
-                logger.error(f"Error loading thumbnail for {content_hash}: {e}")
-        
-        # Try to generate thumbnail if not exists
-        if self.enable_thumbnails:
-            return self._generate_thumbnail_on_demand(content_hash, size)
-        
-        return None
-    
-    def search_assets(self, query: Dict[str, Any] = None, content_type: str = None,
-                     tags: List[str] = None, date_range: Tuple[str, str] = None,
-                     size_range: Tuple[int, int] = None) -> List[Dict[str, Any]]:
-        """
-        Search assets based on metadata criteria.
-        
-        Args:
-            query: General query parameters
-            content_type: Filter by content type (image, audio, video, document)
-            tags: Filter by tags
-            date_range: Filter by date range (start_date, end_date)
-            size_range: Filter by file size range (min_size, max_size)
-            
-        Returns:
-            List of matching asset metadata
-        """
-        results = []
-        
-        # Get all asset hashes
-        asset_hashes = self.list_assets()
-        
-        for content_hash in asset_hashes:
-            metadata = self.get_metadata(content_hash)
-            if not metadata:
-                continue
-            
-            # Apply filters
-            if content_type and metadata.get('content_type') != content_type:
-                continue
-            
-            if tags:
-                asset_tags = metadata.get('tags', [])
-                if not any(tag in asset_tags for tag in tags):
-                    continue
-            
-            if date_range:
-                stored_time = metadata.get('stored_timestamp')
-                if stored_time:
-                    if stored_time < date_range[0] or stored_time > date_range[1]:
-                        continue
-            
-            if size_range:
-                file_size = metadata.get('file_size', 0)
-                if file_size < size_range[0] or file_size > size_range[1]:
-                    continue
-            
-            # Apply general query
-            if query:
-                match = True
-                for key, value in query.items():
-                    if key not in metadata or metadata[key] != value:
-                        match = False
-                        break
-                if not match:
-                    continue
-            
-            results.append(metadata)
-        
-        return results
-    
-    def get_content_stats(self) -> Dict[str, Any]:
-        """
-        Get comprehensive statistics about stored content.
-        
-        Returns:
-            Statistics dictionary
-        """
-        stats = super().get_storage_info()
-        
-        # Enhanced stats
-        content_types = {}
-        total_metadata_size = 0
-        total_thumbnail_size = 0
-        duplicate_count = 0
-        
-        asset_hashes = self.list_assets()
-        
-        for content_hash in asset_hashes:
-            metadata = self.get_metadata(content_hash)
-            if metadata:
-                # Count by content type
-                content_type = metadata.get('content_type', 'unknown')
-                content_types[content_type] = content_types.get(content_type, 0) + 1
-                
-                # Check for duplicates
-                if metadata.get('is_duplicate', False):
-                    duplicate_count += 1
-        
-        # Calculate metadata and thumbnail sizes
-        if self.metadata_dir.exists():
-            total_metadata_size = sum(f.stat().st_size for f in self.metadata_dir.rglob('*.json'))
-        
-        if self.thumbnails_dir.exists():
-            total_thumbnail_size = sum(f.stat().st_size for f in self.thumbnails_dir.rglob('*.jpg'))
-        
-        stats.update({
-            'content_types': content_types,
-            'total_metadata_size': total_metadata_size,
-            'total_thumbnail_size': total_thumbnail_size,
-            'duplicate_count': duplicate_count,
-            'deduplication_enabled': self.enable_deduplication,
-            'thumbnails_enabled': self.enable_thumbnails,
-            'metadata_cache_size': len(self._metadata_cache),
-            'fingerprint_index_size': len(self._fingerprint_index)
-        })
-        
-        return stats
-    
-    def cleanup_orphaned_metadata(self) -> int:
-        """
-        Clean up metadata files for assets that no longer exist.
-        
-        Returns:
-            Number of orphaned metadata files removed
-        """
-        removed_count = 0
-        
-        if not self.metadata_dir.exists():
-            return removed_count
-        
-        # Get existing asset hashes
-        existing_hashes = set(self.list_assets())
-        
-        # Check metadata files
-        for metadata_file in self.metadata_dir.glob('*.json'):
-            content_hash = metadata_file.stem
-            if content_hash not in existing_hashes:
-                try:
-                    metadata_file.unlink()
-                    removed_count += 1
-                    
-                    # Also remove from cache
-                    self._metadata_cache.pop(content_hash, None)
-                    
-                    # Remove associated thumbnail
-                    for thumb_file in self.thumbnails_dir.glob(f"{content_hash}_*.jpg"):
-                        thumb_file.unlink()
-                        
-                except Exception as e:
-                    logger.error(f"Error removing orphaned metadata {content_hash}: {e}")
-        
-        return removed_count
-    
-    def _store_metadata(self, content_hash: str, metadata: Dict[str, Any]):
-        """Store metadata to disk."""
-        metadata_path = self.metadata_dir / f"{content_hash}.json"
         try:
-            with open(metadata_path, 'w', encoding='utf-8') as f:
-                json.dump(metadata, f, indent=2, ensure_ascii=False)
-        except Exception as e:
-            logger.error(f"Error storing metadata for {content_hash}: {e}")
-    
-    def _generate_and_store_thumbnail(self, content_hash: str, content: bytes, 
-                                    metadata: Dict[str, Any]):
-        """Generate and store thumbnail for content."""
-        content_type = metadata.get('content_type')
-        if not content_type:
-            return
-        
-        # Check if thumbnail generation is supported
-        file_extension = metadata.get('extension', '')
-        if not ThumbnailGenerator.can_generate_thumbnail(content_type, file_extension):
-            return
-        
-        try:
-            # Generate thumbnail
-            thumbnail_data = None
-            
-            if content_type == 'image':
-                thumbnail_data = ThumbnailGenerator.generate_image_thumbnail(
-                    Path(f"temp{file_extension}"), content
-                )
-            
-            if thumbnail_data:
-                # Store thumbnail
-                thumbnail_path = self.thumbnails_dir / f"{content_hash}_200x200.jpg"
-                with open(thumbnail_path, 'wb') as f:
-                    f.write(thumbnail_data)
-                
-                # Update metadata
-                metadata['has_thumbnail'] = True
-                metadata['thumbnail_size'] = len(thumbnail_data)
-            
-        except Exception as e:
-            logger.error(f"Error generating thumbnail for {content_hash}: {e}")
-    
-    def _generate_thumbnail_on_demand(self, content_hash: str, size: Tuple[int, int] = None) -> Optional[bytes]:
-        """Generate thumbnail on demand if not exists."""
-        # Get original content
-        content = self.get_bytes(content_hash)
-        if not content:
-            return None
-        
-        # Get metadata
-        metadata = self.get_metadata(content_hash)
+            await self.get(content_hash)
+            return True
+        except FileNotFoundError:
+            return False
+
+    async def delete(self, content_hash: str):
+        """
+        Delete an asset and its associated metadata and thumbnail.
+        """
+        metadata = await self.get_metadata(content_hash)
         if not metadata:
-            return None
-        
-        content_type = metadata.get('content_type')
-        file_extension = metadata.get('extension', '')
-        
-        if not ThumbnailGenerator.can_generate_thumbnail(content_type, file_extension):
-            return None
-        
-        try:
-            size = size or (200, 200)
-            
-            if content_type == 'image':
-                thumbnail_data = ThumbnailGenerator.generate_image_thumbnail(
-                    Path(f"temp{file_extension}"), content, size
-                )
-                
+            logger.info(f"Attempted to delete non-existent asset: {content_hash}")
+            return
+
+        # Delete the actual content file
+        file_path = Path(metadata['file_path'])
+        if file_path.exists():
+            file_path.unlink()
+
+        # Delete metadata file
+        metadata_path = self.metadata_dir / f"{content_hash}.json"
+        if metadata_path.exists():
+            metadata_path.unlink()
+
+        # Delete thumbnail file
+        # TODO: Handle different thumbnail sizes/formats
+        thumbnail_path = self.thumbnails_dir / f"{content_hash}_200x200.jpg" # Assuming default size
+        if thumbnail_path.exists():
+            thumbnail_path.unlink()
+
+        # Remove from indexes and cache
+        self._remove_from_indexes(content_hash, metadata)
+        self._metadata_cache.pop(content_hash, None)
+
+        logger.info(f"Deleted asset and its metadata/thumbnail for hash: {content_hash}")
+
+    def _remove_from_indexes(self, content_hash: str, metadata: Dict[str, Any]):
+        """
+        Remove asset from inverted index and fingerprint index.
+        """
+        # Remove from inverted index
+        for key, values in self._inverted_index.items():
+            if content_hash in values:
+                values.remove(content_hash)
+
+        # Remove from fingerprint index if not a duplicate
+        if not metadata.get('is_duplicate', False):
+            fingerprint = metadata.get('content_fingerprint')
+            if fingerprint and fingerprint in self._fingerprint_index and self._fingerprint_index[fingerprint] == content_hash:
+                self._fingerprint_index.pop(fingerprint)
+
+    async def _extract_and_merge_metadata(self, content_bytes: bytes, content_type: str, user_metadata: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Extracts metadata from content and merges with user-provided metadata.
+        """
+        extracted_metadata = await MetadataExtractor.extract_metadata(content_bytes, content_type)
+        if user_metadata:
+            extracted_metadata.update(user_metadata)
+        return extracted_metadata
+
+    async def _store_metadata(self, content_hash: str, metadata: Dict[str, Any]):
+        """
+        Stores metadata to a JSON file.
+        """
+        metadata_path = self.metadata_dir / f"{content_hash}.json"
+        async with aiofiles.open(metadata_path, 'w', encoding='utf-8') as f:
+            await f.write(json.dumps(metadata, indent=4))
+
+    async def _generate_and_store_thumbnail(self, content_hash: str, content_bytes: bytes, metadata: Dict[str, Any]):
+        """
+        Generates and stores a thumbnail for image/video assets.
+        """
+        content_type = metadata.get('content_type', '')
+        if content_type.startswith('image/') or content_type.startswith('video/') or content_type == 'application/pdf':
+            try:
+                thumbnail_data = await ThumbnailGenerator.generate_image_thumbnail(content_bytes, content_type)
                 if thumbnail_data:
-                    # Store for future use
-                    size_str = f"{size[0]}x{size[1]}"
-                    thumbnail_path = self.thumbnails_dir / f"{content_hash}_{size_str}.jpg"
-                    with open(thumbnail_path, 'wb') as f:
-                        f.write(thumbnail_data)
-                    
-                    return thumbnail_data
-            
-        except Exception as e:
-            logger.error(f"Error generating thumbnail on demand for {content_hash}: {e}")
-        
-        return None
-    
-    def _update_indexes(self, content_hash: str, metadata: Dict[str, Any]):
-        """Update search indexes."""
-        # This is a simple implementation
-        # In a production system, you might use a proper search engine like Elasticsearch
-        
+                    thumbnail_path = self.thumbnails_dir / f"{content_hash}_200x200.jpg"
+                    async with aiofiles.open(thumbnail_path, 'wb') as f:
+                        await f.write(thumbnail_data)
+            except Exception as e:
+                logger.error(f"Error generating thumbnail for {content_hash}: {e}")
+
+    async def _update_indexes(self, content_hash: str, metadata: Dict[str, Any]):
+        """
+        Update inverted index with new asset metadata.
+        """
+        # Index content type
+        content_type = metadata.get('content_type')
+        if content_type:
+            self._inverted_index.setdefault('content_type:' + content_type, []).append(content_hash)
+
+        # Index tags
+        tags = metadata.get('tags', [])
+        for tag in tags:
+            self._inverted_index.setdefault('tag:' + tag, []).append(content_hash)
+
+        # Index other searchable metadata fields (e.g., 'title', 'description')
+        for field in ['title', 'description']:
+            value = metadata.get(field)
+            if value and isinstance(value, str):
+                self._inverted_index.setdefault(f'{field}:{value.lower()}', []).append(content_hash)
+
+        await self._save_indexes()
+
+    async def _load_indexes(self):
+        """
+        Load inverted index and fingerprint index from disk.
+        """
+        inverted_index_path = self.index_dir / "inverted_index.json"
+        fingerprint_index_path = self.index_dir / "fingerprint_index.json"
+
+        if inverted_index_path.exists():
+            try:
+                async with aiofiles.open(inverted_index_path, 'r', encoding='utf-8') as f:
+                    self._inverted_index = json.loads(await f.read())
+            except Exception as e:
+                logger.error(f"Error loading inverted index: {e}")
+
+        if fingerprint_index_path.exists():
+            try:
+                async with aiofiles.open(fingerprint_index_path, 'r', encoding='utf-8') as f:
+                    self._fingerprint_index = json.loads(await f.read())
+            except Exception as e:
+                logger.error(f"Error loading fingerprint index: {e}")
+
+    async def _save_indexes(self):
+        """
+        Save inverted index and fingerprint index to disk.
+        """
+        inverted_index_path = self.index_dir / "inverted_index.json"
+        fingerprint_index_path = self.index_dir / "fingerprint_index.json"
         try:
-            # Content type index
-            content_type = metadata.get('content_type', 'unknown')
-            content_type_index_path = self.index_dir / f"content_type_{content_type}.json"
-            
-            # Load existing index
-            if content_type_index_path.exists():
-                with open(content_type_index_path, 'r') as f:
-                    index = json.load(f)
-            else:
-                index = []
-            
-            # Add to index if not already present
-            if content_hash not in index:
-                index.append(content_hash)
-                
-                # Save updated index
-                with open(content_type_index_path, 'w') as f:
-                    json.dump(index, f)
-            
-        except Exception as e:
-            logger.error(f"Error updating indexes for {content_hash}: {e}")
-    
-    def _load_indexes(self):
-        """Load existing indexes into memory."""
-        try:
-            # Load fingerprint index
-            fingerprint_index_path = self.index_dir / "fingerprints.json"
-            if fingerprint_index_path.exists():
-                with open(fingerprint_index_path, 'r') as f:
-                    self._fingerprint_index = json.load(f)
-            
-        except Exception as e:
-            logger.error(f"Error loading indexes: {e}")
-    
-    def _save_indexes(self):
-        """Save indexes to disk."""
-        try:
-            # Save fingerprint index
-            fingerprint_index_path = self.index_dir / "fingerprints.json"
-            with open(fingerprint_index_path, 'w') as f:
-                json.dump(self._fingerprint_index, f)
-            
+            async with aiofiles.open(inverted_index_path, 'w', encoding='utf-8') as f:
+                await f.write(json.dumps(self._inverted_index, indent=4))
+            async with aiofiles.open(fingerprint_index_path, 'w', encoding='utf-8') as f:
+                await f.write(json.dumps(self._fingerprint_index, indent=4))
         except Exception as e:
             logger.error(f"Error saving indexes: {e}")
-    
+
+    def generate_hash(self, content: bytes) -> str:
+        """
+        Generate a SHA256 hash for the given content.
+        """
+        import hashlib
+        return hashlib.sha256(content).hexdigest()
+
     def __del__(self):
-        """Cleanup when driver is destroyed."""
-        try:
-            self._save_indexes()
-        except Exception:
-            pass
+        """
+        Ensure indexes are saved on object deletion.
+        """
+        # Destructors cannot be async, so we can't await _save_indexes here.
+        # Consider alternative strategies for graceful shutdown if index saving is critical.
+        pass
 
 
 class MultimodalAssetManager:
     """
-    High-level asset manager for multimodal content.
+    Manages multimodal assets using a MultimodalLocalDriver.
     """
-    
+
     def __init__(self, driver: MultimodalLocalDriver):
-        """
-        Initialize asset manager.
-        
-        Args:
-            driver: Multimodal driver instance
-        """
         self.driver = driver
-    
-    def add_asset(self, content: bytes, filename: str = None, 
-                 tags: List[str] = None, description: str = None,
-                 custom_metadata: Dict[str, Any] = None) -> str:
+
+    async def add_asset(self, content: Union[Path, str, bytes], content_type: str = None, filename: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None) -> str:
         """
-        Add an asset with enhanced metadata.
-        
+        Adds a new asset to the system.
+
         Args:
-            content: Asset content as bytes
-            filename: Optional filename
-            tags: Optional tags for categorization
-            description: Optional description
-            custom_metadata: Optional custom metadata
-            
+            content: The asset content (Path, string path, or bytes).
+            content_type: The MIME type of the content. Will be guessed if not provided.
+            filename: Optional original filename.
+            metadata: Optional additional metadata.
+
         Returns:
-            Content hash
+            The content hash of the added asset.
         """
-        metadata = custom_metadata or {}
-        
-        if tags:
-            metadata['tags'] = tags
-        if description:
-            metadata['description'] = description
-        
-        return self.driver.put(content, filename, metadata)
-    
-    def get_asset_info(self, content_hash: str) -> Optional[Dict[str, Any]]:
+        if not content_type:
+            if isinstance(content, Path):
+                content_type = mimetypes.guess_type(content.name)[0] or 'application/octet-stream'
+            elif isinstance(content, str):
+                content_type = mimetypes.guess_type(content)[0] or 'application/octet-stream'
+            else:
+                content_type = 'application/octet-stream' # Default for bytes if no filename hint
+
+        return await self.driver.put(content, content_type, filename, metadata)
+
+    async def get_asset(self, content_hash: str) -> Path:
         """
-        Get comprehensive asset information.
-        
+        Retrieves an asset by its content hash.
+
         Args:
-            content_hash: Content hash
-            
+            content_hash: The content hash of the asset.
+
         Returns:
-            Asset information including metadata and availability
+            Path to the asset file.
         """
-        if not self.driver.exists(content_hash):
-            return None
-        
-        metadata = self.driver.get_metadata(content_hash)
-        if not metadata:
-            return None
-        
-        info = {
-            'content_hash': content_hash,
-            'exists': True,
-            'has_thumbnail': self.driver.get_thumbnail(content_hash) is not None,
-            'metadata': metadata
-        }
-        
-        return info
-    
-    def find_similar_assets(self, content_hash: str, threshold: float = 0.8) -> List[str]:
+        return self.driver.get(content_hash)
+
+    async def delete_asset(self, content_hash: str):
         """
-        Find assets similar to the given one.
-        
-        Args:
-            content_hash: Reference content hash
-            threshold: Similarity threshold (0.0 to 1.0)
-            
-        Returns:
-            List of similar asset hashes
+        Deletes an asset by its content hash.
         """
-        # This is a placeholder implementation
-        # In a real system, you might use perceptual hashing for images,
-        # audio fingerprinting for audio, etc.
-        
-        reference_metadata = self.driver.get_metadata(content_hash)
-        if not reference_metadata:
-            return []
-        
-        similar_assets = []
-        content_type = reference_metadata.get('content_type')
-        
-        # Search assets of the same type
-        candidates = self.driver.search_assets({'content_type': content_type})
-        
-        for candidate in candidates:
-            candidate_hash = candidate.get('content_hash')
-            if candidate_hash == content_hash:
-                continue
-            
-            # Simple similarity based on metadata
-            similarity = self._calculate_metadata_similarity(reference_metadata, candidate)
-            if similarity >= threshold:
-                similar_assets.append(candidate_hash)
-        
-        return similar_assets
-    
-    def _calculate_metadata_similarity(self, metadata1: Dict[str, Any], 
-                                     metadata2: Dict[str, Any]) -> float:
-        """Calculate similarity between two metadata objects."""
-        # Simple implementation - could be much more sophisticated
-        
-        content_type1 = metadata1.get('content_type')
-        content_type2 = metadata2.get('content_type')
-        
-        if content_type1 != content_type2:
-            return 0.0
-        
-        similarity_score = 0.0
-        total_factors = 0
-        
-        if content_type1 == 'image':
-            # Compare image dimensions
-            w1, h1 = metadata1.get('width', 0), metadata1.get('height', 0)
-            w2, h2 = metadata2.get('width', 0), metadata2.get('height', 0)
-            
-            if w1 > 0 and h1 > 0 and w2 > 0 and h2 > 0:
-                aspect_ratio1 = w1 / h1
-                aspect_ratio2 = w2 / h2
-                aspect_similarity = 1.0 - abs(aspect_ratio1 - aspect_ratio2) / max(aspect_ratio1, aspect_ratio2)
-                similarity_score += aspect_similarity
-                total_factors += 1
-        
-        elif content_type1 == 'audio':
-            # Compare audio duration
-            duration1 = metadata1.get('duration', 0)
-            duration2 = metadata2.get('duration', 0)
-            
-            if duration1 > 0 and duration2 > 0:
-                duration_similarity = 1.0 - abs(duration1 - duration2) / max(duration1, duration2)
-                similarity_score += duration_similarity
-                total_factors += 1
-        
-        # Compare file sizes
-        size1 = metadata1.get('file_size', 0)
-        size2 = metadata2.get('file_size', 0)
-        
-        if size1 > 0 and size2 > 0:
-            size_similarity = 1.0 - abs(size1 - size2) / max(size1, size2)
-            similarity_score += size_similarity
-            total_factors += 1
-        
-        return similarity_score / total_factors if total_factors > 0 else 0.0
+        self.driver.delete(content_hash)
+
+    def get_asset_metadata(self, content_hash: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieves metadata for an asset.
+        """
+        return self.driver.get_metadata(content_hash)
+
+    def search_assets(self, **kwargs) -> List[Dict[str, Any]]:
+        """
+        Searches for assets based on various criteria.
+        """
+        return self.driver.search_assets(**kwargs)
+
+    def get_content_stats(self) -> Dict[str, Any]:
+        """
+        Gets statistics about stored content.
+        """
+        return self.driver.get_content_stats()
+
+    def cleanup_orphaned_metadata(self) -> int:
+        """
+        Cleans up metadata files that no longer have corresponding asset files.
+        """
+        return self.driver.cleanup_orphaned_metadata()

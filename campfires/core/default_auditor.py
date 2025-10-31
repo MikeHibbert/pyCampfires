@@ -6,12 +6,16 @@ fulfill task requirements using RAG (Retrieval-Augmented Generation) prompting.
 The auditor focuses on task requirement validation and solution assessment.
 """
 
-import logging
+import json5
 import json
+import logging
+import re
+import os
 from typing import Dict, List, Any, Optional, Tuple, Union
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+from .graph_store import GraphStore, Node, Edge
 
 # Optional imports - will be used if available
 try:
@@ -115,12 +119,21 @@ class DefaultAuditor:
         self.party_box = party_box
         self.zeitgeist_engine = zeitgeist_engine
         self.config = config or {}
+        # Graph sharing configuration
+        self._graph_store: Optional[GraphStore] = None
+        self._graph_enabled: bool = self.config.get('graph_enabled', True)
+        self._topic_aliases: Dict[str, str] = {
+            **{k.lower(): v for k, v in (self.config.get('topic_aliases') or {}).items()}
+        }
         
         # Auditing configuration
         self.confidence_threshold = self.config.get('confidence_threshold', 0.7)
         self.max_rag_context_length = self.config.get('max_rag_context_length', 4000)
         self.validation_model = self.config.get('validation_model', 'meta-llama/llama-3.2-3b-instruct:free')
-        
+        self._rag_document_path: Optional[str] = None
+        self._rag_content: Optional[str] = None
+        self._load_rag_document()
+
         # Validation templates
         self._validation_prompts = {
             'requirement_analysis': """
@@ -143,44 +156,42 @@ class DefaultAuditor:
             3. What is the quality and completeness of the solution?
             4. Are there any potential issues or improvements needed?
             
-            Provide your assessment in the following JSON format:
-            {{
-                "overall_assessment": "pass|fail|partial|needs_review",
-                "confidence_score": 0.0-1.0,
-                "requirements_coverage": {{
-                    "requirement_id": true/false,
-                    ...
-                }},
-                "issues": [
-                    {{
-                        "severity": "critical|high|medium|low|info",
-                        "category": "completeness|correctness|quality|performance|security",
-                        "description": "Issue description",
-                        "suggestion": "Improvement suggestion"
-                    }}
-                ],
-                "recommendations": ["recommendation1", "recommendation2", ...],
-                "reasoning": "Detailed explanation of the assessment"
-            }}
+            Return ONLY a strict JSON object with these exact keys:
+            - overall_assessment: one of ["pass", "fail", "partial", "needs_review"].
+            - confidence_score: number between 0.0 and 1.0.
+            - requirements_coverage: object mapping requirement IDs to true/false.
+            - issues: array of objects with keys [severity, category, description, suggestion].
+              - severity: one of ["critical", "high", "medium", "low", "info"].
+              - category: one of ["completeness", "correctness", "quality", "performance", "security", "usability", "maintainability", "general"].
+            - recommendations: array of strings.
+            - reasoning: string.
+            
+            Output rules:
+            - Strict JSON only (no code fences, no comments, no extra text).
+            - Use quoted keys and values where appropriate.
+            - Do not include example placeholders.
             """,
             
             'solution_quality': """
             Evaluate the quality and correctness of this solution for the given task.
             
             Task: {task_description}
-            Solution: {solution_summary}
+            Solution Summary: {solution_summary}
+            Solution Details: {solution_details}
+            Historical Context: {historical_context}
             
-            Context from previous similar tasks:
-            {historical_context}
+            Return ONLY a strict JSON object with these exact keys:
+            - quality_score: number between 0.0 and 1.0 (not a string).
+            - quality_issues: array of objects with keys [severity, category, description, suggestion].
+              - severity: one of ["critical", "high", "medium", "low", "info"].
+              - category: one of ["completeness", "correctness", "quality", "performance", "security", "usability", "maintainability", "general"].
+            - quality_recommendations: array of strings.
+            - reasoning: string explaining the assessment.
             
-            Focus on:
-            1. Technical correctness
-            2. Completeness of implementation
-            3. Best practices adherence
-            4. Potential edge cases or issues
-            5. Performance considerations
-            
-            Rate the solution quality and provide specific feedback.
+            Output rules:
+            - Strict JSON only (no code fences, no comments, no extra text).
+            - Valid JSON syntax (quoted keys, no trailing commas).
+            - Ensure quality_score is a number in [0.0, 1.0].
             """,
             
             'requirement_coverage': """
@@ -212,6 +223,21 @@ class DefaultAuditor:
             'usability': 'User experience and usability',
             'maintainability': 'Code maintainability and documentation'
         }
+
+    def set_graph_store(self, graph_store: GraphStore) -> None:
+        """
+        Inject a GraphStore for auditor publishing and retrieval.
+        """
+        self._graph_store = graph_store
+
+    def _normalize_topic(self, topic: Optional[str]) -> str:
+        """
+        Normalize topic using alias mapping. Falls back to lowercased stripped text.
+        """
+        if not topic:
+            return "general"
+        t = str(topic).strip().lower()
+        return self._topic_aliases.get(t, t)
     
     async def audit_task_solution(self, audit_context: AuditContext) -> ValidationReport:
         """
@@ -226,18 +252,27 @@ class DefaultAuditor:
         logger.info(f"Starting audit for task: {audit_context.task_id}")
         
         try:
+            logger.debug(f"Preparing RAG context for task: {audit_context.task_id}")
             # Prepare RAG context
             rag_context = await self._prepare_rag_context(audit_context)
+            logger.debug(f"RAG context prepared. Length: {len(rag_context) if rag_context else 0}")
             
+            logger.debug(f"Performing requirement analysis for task: {audit_context.task_id}")
             # Perform requirement analysis
             requirement_analysis = await self._analyze_requirements(audit_context, rag_context)
+            logger.debug(f"Requirement analysis completed for task: {audit_context.task_id}. Overall assessment: {requirement_analysis.get('overall_assessment')}")
             
+            logger.debug(f"Evaluating solution quality for task: {audit_context.task_id}")
             # Evaluate solution quality
             quality_assessment = await self._evaluate_solution_quality(audit_context, rag_context)
+            logger.debug(f"Solution quality evaluation completed for task: {audit_context.task_id}. Quality score: {quality_assessment.get('quality_score')}")
             
+            logger.debug(f"Checking requirement coverage for task: {audit_context.task_id}")
             # Check requirement coverage
             coverage_analysis = await self._check_requirement_coverage(audit_context)
+            logger.debug(f"Requirement coverage checked for task: {audit_context.task_id}. Covered requirements: {sum(coverage_analysis.values())}/{len(coverage_analysis)}")
             
+            logger.debug(f"Generating comprehensive report for task: {audit_context.task_id}")
             # Generate comprehensive report
             report = self._generate_validation_report(
                 audit_context,
@@ -248,11 +283,10 @@ class DefaultAuditor:
             
             logger.info(f"Audit completed for task {audit_context.task_id}: {report.overall_result.value}")
             return report
-            
         except Exception as e:
             logger.error(f"Audit failed for task {audit_context.task_id}: {e}")
             return self._create_error_report(audit_context, str(e))
-    
+
     async def _prepare_rag_context(self, audit_context: AuditContext) -> str:
         """
         Prepare RAG context for validation prompting.
@@ -293,12 +327,14 @@ class DefaultAuditor:
             
             # Add Zeitgeist context if available
             if self.zeitgeist_engine:
-                zeitgeist_context = await self.zeitgeist_engine.get_context(
-                    query=context_query,
-                    context_type='task_validation'
+                zeitgeist_context = await self.zeitgeist_engine.get_zeitgeist(
+                    topic=context_query,
+                    role="auditor",  # Default role for auditor
+                    context=context_type, # Use context_type as context
+                    search_types=None # No specific search types for now
                 )
-                if zeitgeist_context:
-                    context_parts.append(f"Zeitgeist context: {zeitgeist_context}")
+                if zeitgeist_context and not zeitgeist_context.get('error'):
+                    context_parts.append(f"Zeitgeist context: {zeitgeist_context.get('summary', zeitgeist_context)}")
             
             # Combine and truncate if necessary
             full_context = "\n".join(context_parts)
@@ -354,18 +390,93 @@ class DefaultAuditor:
                     max_tokens=1500,
                     temperature=0.1  # Low temperature for consistent validation
                 )
+                logger.debug(f"LLM response for solution quality evaluation: {response}")
+                logger.debug(f"LLM response for requirement analysis: {response}")
             else:
                 # Fallback when no party_box available
-                response = '{"overall_assessment": "pass", "confidence_score": 0.8, "requirements_coverage": {}, "identified_issues": [], "recommendations": []}'
+                response = '{"overall_assessment": "pass", "confidence_score": 0.8, "requirements_coverage": {}, "issues": [], "recommendations": []}'
             
             # Parse JSON response
             try:
-                analysis_result = json.loads(response)
-                return analysis_result
+                json_match = re.search(r'```json\n(.*?)```', response, re.DOTALL)
+                if json_match:
+                    json_string = json_match.group(1)
+                    analysis_result = json5.loads(json_string)
+                else:
+                    # If no JSON block is found, try to parse the whole response as JSON
+                    # This handles cases where the LLM might not wrap the JSON in ```json```
+                    analysis_result = json5.loads(response)
             except json.JSONDecodeError:
                 # Fallback parsing if JSON is malformed
-                return self._parse_fallback_response(response)
+                logger.warning("LLM response is not valid JSON. Using fallback parser.")
+                analysis_result = self._parse_fallback_response(response)
+            except Exception as e:
+                logger.error(f"An unexpected error occurred during JSON parsing: {e}")
+                analysis_result = {}
+            # Normalize field names
+            if isinstance(analysis_result, dict):
+                if 'identified_issues' in analysis_result and 'issues' not in analysis_result:
+                    analysis_result['issues'] = analysis_result.pop('identified_issues')
+            return analysis_result
+
+        except Exception as e:
+            logger.error(f"Requirements analysis failed: {e}")
+            return {
+                'overall_assessment': 'error',
+                'confidence_score': 0.0,
+                'requirements_coverage': {},
+                'issues': [],
+                'recommendations': [],
+                'reasoning': f'Analysis failed: {e}'
+            }
+    
+    async def _analyze_requirements(self, audit_context: AuditContext, rag_context: str) -> Dict[str, Any]:
+        """Analyze requirements coverage and solution quality."""
+        try:
+            # Improved prompt with strict JSON instructions
+            prompt = f"""{self._validation_prompts['requirement_analysis']}"""
+            response = await self.llm.generate(prompt=prompt)
+            
+            # Add JSON validation with error logging
+            try:
+                analysis_result = json.loads(response)
+                # Validate required fields
+                required_fields = ['overall_assessment', 'confidence_score', 'requirements_coverage', 'issues', 'recommendations', 'reasoning']
+                if not all(field in analysis_result for field in required_fields):
+                    missing_fields = [field for field in required_fields if field not in analysis_result]
+                    raise ValueError(f"Missing required fields in LLM response: {', '.join(missing_fields)}")
                 
+                # Validate overall_assessment enum values
+                valid_overall_assessments = [e.value for e in ValidationResult]
+                if analysis_result.get('overall_assessment') not in valid_overall_assessments:
+                    raise ValueError(f"Invalid overall_assessment value: {analysis_result.get('overall_assessment')}. Must be one of {', '.join(valid_overall_assessments)}")
+
+            except json.JSONDecodeError as e:
+                logger.error(f"LLM response is not valid JSON: {response}. Error: {e}")
+                analysis_result = {
+                    'overall_assessment': 'error',
+                    'confidence_score': 0.0,
+                    'requirements_coverage': {},
+                    'issues': [],
+                    'recommendations': [],
+                    'reasoning': f'LLM response was not valid JSON: {e}'
+                }
+            except ValueError as e:
+                logger.error(f"LLM response validation failed: {e}. Response: {response}")
+                analysis_result = {
+                    'overall_assessment': 'error',
+                    'confidence_score': 0.0,
+                    'requirements_coverage': {},
+                    'issues': [],
+                    'recommendations': [],
+                    'reasoning': f'LLM response validation failed: {e}'
+                }
+            # Normalize field names
+            if isinstance(analysis_result, dict):
+                if 'identified_issues' in analysis_result and 'issues' not in analysis_result:
+                    analysis_result['issues'] = analysis_result.pop('identified_issues')
+            return analysis_result
+
         except Exception as e:
             logger.error(f"Requirements analysis failed: {e}")
             return {
@@ -399,9 +510,11 @@ class DefaultAuditor:
             ])
         
         # Create quality evaluation prompt
+        solution_details = json.dumps(audit_context.solution_data, indent=2)
         prompt = self._validation_prompts['solution_quality'].format(
             task_description=audit_context.task_description,
             solution_summary=audit_context.solution_data.get('summary', ''),
+            solution_details=solution_details,
             historical_context=historical_context
         )
         
@@ -413,7 +526,7 @@ class DefaultAuditor:
                 response = await self.party_box.query_llm(
                     prompt=full_prompt,
                     model=self.validation_model,
-                    max_tokens=1000,
+                    max_tokens=1200,
                     temperature=0.2
                 )
             else:
@@ -421,7 +534,34 @@ class DefaultAuditor:
                 response = "Quality Score: 8/10\nCompleteness: High\nCorrectness: Good\nEfficiency: Adequate\nMaintainability: Good"
             
             # Extract quality metrics from response
-            return self._extract_quality_metrics(response)
+            with open("raw_llm_response_debug.txt", "w") as f:
+                f.write(response)
+            print(f"Raw LLM response type: {type(response)}")
+            print(f"Raw LLM response: {response}")
+            json_match = re.search(r'```(?:json)?\n(.*?)```', response, re.DOTALL)
+            if json_match:
+                json_string = json_match.group(1).strip()
+            else:
+                # Extract the first JSON object found in the response
+                json_match = re.search(r'\{.*\}', response, re.DOTALL)
+                if json_match:
+                    json_string = json_match.group().strip()
+                else:
+                    logger.warning("No JSON object found in LLM response. Using fallback parser.")
+                    return self._parse_fallback_response(response)
+            
+            try:
+                parsed_response = json5.loads(json_string)
+            except json.JSONDecodeError:
+                # Fallback to strict JSON parsing if json5 fails
+                try:
+                    parsed_response = json.loads(json_string)
+                except json.JSONDecodeError:
+                    logger.warning("LLM response contains invalid JSON. Using fallback parser.")
+                    return self._parse_fallback_response(response)
+
+            logger.debug(f"Parsed LLM response for quality evaluation: {parsed_response}")
+            return self._extract_quality_metrics(parsed_response)
             
         except Exception as e:
             logger.error(f"Quality evaluation failed: {e}")
@@ -655,23 +795,40 @@ class DefaultAuditor:
         
         return result
     
-    def _extract_quality_metrics(self, response: str) -> Dict[str, Any]:
-        """Extract quality metrics from response."""
-        # Simple extraction logic
-        quality_score = 0.5
+    def _extract_quality_metrics(self, response_dict: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract and validate quality metrics from response dictionary."""
+        # Check if quality_score exists
+        if "quality_score" not in response_dict:
+            # Heuristic fallback for demos: use a small default score when evaluator returns minimal/empty JSON
+            logger.info("LLM response missing 'quality_score'; applying heuristic fallback of 0.3.")
+            return {
+                "quality_score": 0.3,
+                "quality_issues": response_dict.get('quality_issues', []),
+                "quality_recommendations": response_dict.get('quality_recommendations', [])
+            }
         
-        response_lower = response.lower()
-        if 'excellent' in response_lower or 'high quality' in response_lower:
-            quality_score = 0.9
-        elif 'good' in response_lower:
-            quality_score = 0.7
-        elif 'poor' in response_lower or 'low quality' in response_lower:
-            quality_score = 0.3
+        # Validate and convert quality_score to float
+        quality_score = response_dict["quality_score"]
+        if isinstance(quality_score, str):
+            try:
+                quality_score = float(quality_score.strip())
+            except ValueError:
+                logger.error(f"Invalid quality_score string: {quality_score}")
+                quality_score = 0.0
+        elif not isinstance(quality_score, (int, float)):
+            logger.error(f"Invalid quality_score type: {type(quality_score)}")
+            quality_score = 0.0
+        
+        # Ensure score is within 0-1 range
+        quality_score = max(0.0, min(1.0, quality_score))
+        
+        quality_issues = response_dict.get('quality_issues', [])
+        quality_recommendations = response_dict.get('quality_recommendations', [])
         
         return {
             'quality_score': quality_score,
-            'quality_issues': [],
-            'quality_recommendations': []
+            'quality_issues': quality_issues,
+            'quality_recommendations': quality_recommendations
         }
     
     def get_validation_summary(self, report: ValidationReport) -> str:
@@ -704,3 +861,162 @@ class DefaultAuditor:
             summary_parts.append(f"Recommendations: {len(report.recommendations)}")
         
         return " | ".join(summary_parts)
+
+    def set_rag_document_path(self, path: Optional[str]):
+        """
+        Sets a new RAG document path and reloads the document.
+        If path is None, clears the current RAG document.
+        """
+        self._rag_document_path = path
+        self._load_rag_document()
+
+    def _load_rag_document(self):
+        """
+        Loads the RAG document content from the specified path.
+        If path is None or file does not exist, clears the content.
+        """
+        if self._rag_document_path and os.path.exists(self._rag_document_path):
+            try:
+                with open(self._rag_document_path, 'r', encoding='utf-8') as f:
+                    self._rag_content = f.read()
+                logger.info(f"Loaded RAG document from {self._rag_document_path}")
+            except Exception as e:
+                logger.error(f"Error loading RAG document from {self._rag_document_path}: {e}")
+                self._rag_content = None
+        else:
+            self._rag_content = None
+            if self._rag_document_path:
+                logger.warning(f"RAG document path {self._rag_document_path} is invalid or does not exist. Clearing RAG content.")
+
+    async def _analyze_requirements_and_solution(self, audit_context: AuditContext) -> Dict[str, Any]:
+        """
+        Placeholder for analyzing requirements and solution.
+        Subclasses should override this method.
+        """
+        logger.warning("'_analyze_requirements_and_solution' not implemented in DefaultAuditor. Returning empty dict.")
+        return {}
+
+    async def audit(
+        self,
+        audit_context: AuditContext
+    ) -> ValidationReport:
+        """
+        Performs an audit of the solution against the task requirements.
+        """
+        try:
+            logger.info(f"Starting audit for task: {audit_context.task_id}")
+        
+            # 1. Analyze requirements and solution
+            requirement_analysis = await self._analyze_requirements_and_solution(audit_context)
+            
+            rag_context = None # Initialize rag_context to None
+
+            # Evaluate solution quality
+            quality_assessment = await self._evaluate_solution_quality(audit_context, rag_context)
+            
+            # Check requirement coverage
+            coverage_analysis = await self._check_requirement_coverage(audit_context)
+            
+            # Generate comprehensive report
+            report = self._generate_validation_report(
+                audit_context,
+                requirement_analysis,
+                quality_assessment,
+                coverage_analysis
+            )
+
+            # Publish the audit report to graph for collaboration
+            try:
+                await self._share_stage_report(
+                    audit_context=audit_context,
+                    stage=audit_context.execution_context.get('stage') or 'audit',
+                    report=report,
+                    attempt=audit_context.execution_context.get('attempt')
+                )
+            except Exception as ge:
+                logger.debug(f"Graph publish skipped/failed: {ge}")
+            
+            logger.info(f"Audit completed for task {audit_context.task_id}: {report.overall_result.value}")
+            return report
+        except Exception as e:
+            logger.error(f"Audit failed for task {audit_context.task_id}: {e}")
+            return self._create_error_report(audit_context, str(e))
+
+    async def _share_stage_report(
+        self,
+        audit_context: AuditContext,
+        stage: str,
+        report: 'ValidationReport',
+        attempt: Optional[int] = None,
+    ) -> None:
+        """
+        Share the auditor's stage report to the graph store as a finding.
+        """
+        if not self._graph_enabled or self._graph_store is None:
+            return
+        # Derive topic from task description; normalize
+        topic = self._normalize_topic(audit_context.task_description or stage)
+        task_id = f"task:{audit_context.task_id}"
+        stage_id = f"stage:{(stage or 'audit').strip().lower()}"
+        auditor_id = f"auditor:{self.__class__.__name__}"
+        finding_id = f"finding:{audit_context.task_id}:{stage}:{int(report.validation_timestamp.timestamp())}"
+
+        # Upsert nodes
+        await self._graph_store.upsert_node(Node(id=auditor_id, label="Auditor", properties={"name": self.__class__.__name__}))
+        await self._graph_store.upsert_node(Node(id=task_id, label="Task", properties={"task_id": audit_context.task_id, "topic": topic}))
+        await self._graph_store.upsert_node(Node(id=stage_id, label="Stage", properties={"name": stage}))
+        await self._graph_store.upsert_node(Node(
+            id=finding_id,
+            label="Finding",
+            properties={
+                "summary": self.get_validation_summary(report),
+                "importance": float(report.confidence_score or 0),
+                "tags": [stage, report.overall_result.value],
+                "timestamp": report.validation_timestamp.isoformat(),
+            }
+        ))
+
+        # Link nodes
+        await self._graph_store.upsert_edge(Edge(src=auditor_id, dst=finding_id, type="CREATED", properties={"attempt": attempt or 1}))
+        await self._graph_store.upsert_edge(Edge(src=task_id, dst=finding_id, type="HAS_FINDING", properties={}))
+        await self._graph_store.upsert_edge(Edge(src=stage_id, dst=finding_id, type="HAS_FINDING", properties={}))
+
+        # Publish CAMAS procedure and steps linked to this stage and finding
+        try:
+            procedure_id = f"procedure:{stage_id.split(':',1)[1]}"
+            await self._graph_store.upsert_node(Node(id=procedure_id, label="Procedure", properties={
+                "name": stage,
+                "type": "CAMAS"
+            }))
+            await self._graph_store.upsert_edge(Edge(src=stage_id, dst=procedure_id, type="HAS_PROCEDURE", properties={}))
+
+            step_name = f"attempt-{(attempt or 1)}"
+            proc_step_id = f"procstep:{audit_context.task_id}:{stage}:{(attempt or 1)}"
+            await self._graph_store.upsert_node(Node(id=proc_step_id, label="ProcedureStep", properties={
+                "name": step_name,
+                "actor": "Auditor",
+                "start_ts": report.validation_timestamp.isoformat(),
+                "status": report.overall_result.value,
+                "importance": float(report.confidence_score or 0)
+            }))
+            await self._graph_store.upsert_edge(Edge(src=procedure_id, dst=proc_step_id, type="HAS_STEP", properties={"order_index": (attempt or 1)}))
+            await self._graph_store.upsert_edge(Edge(src=proc_step_id, dst=finding_id, type="GENERATED_FINDING", properties={}))
+        except Exception as e:
+            # Don't break auditing if procedure publishing fails
+            pass
+
+        # Add detailed context for retrieval weighting
+        await self._graph_store.add_context(finding_id, {
+            "confidence": float(report.confidence_score or 0),
+            "issues": [
+                {
+                    "severity": i.severity.value,
+                    "category": i.category,
+                    "description": i.description,
+                    "suggestion": i.suggestion,
+                } for i in (report.issues or [])
+            ],
+            "recommendations": report.recommendations or [],
+            "coverage": report.requirements_coverage or {},
+        })
+from .graph_store import GraphStore, Node, Edge

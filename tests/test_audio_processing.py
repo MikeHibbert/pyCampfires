@@ -130,12 +130,16 @@ class TestAudioProcessor:
                 assert result is True
                 mock_audio.export.assert_called_once()
             finally:
-                os.unlink(output_file.name)
+                try:
+                    output_file.close()
+                finally:
+                    os.unlink(output_file.name)
     
     @patch('campfires.core.audio_processor.pydub')
     def test_extract_audio_segment(self, mock_pydub, mock_audio_file):
         """Test extracting audio segment."""
-        mock_audio = Mock()
+        from unittest.mock import MagicMock
+        mock_audio = MagicMock()
         mock_segment = Mock()
         mock_audio.__getitem__.return_value = mock_segment
         mock_pydub.AudioSegment.from_file.return_value = mock_audio
@@ -154,12 +158,16 @@ class TestAudioProcessor:
                 assert result is True
                 mock_audio.__getitem__.assert_called_once_with(slice(10000, 30000))
             finally:
-                os.unlink(output_file.name)
+                try:
+                    output_file.close()
+                finally:
+                    os.unlink(output_file.name)
     
     @patch('campfires.core.audio_processor.pydub')
     def test_generate_waveform_data(self, mock_pydub, mock_audio_file):
         """Test waveform data generation."""
-        mock_audio = Mock()
+        from unittest.mock import MagicMock
+        mock_audio = MagicMock()
         mock_audio.get_array_of_samples.return_value = [100, 200, 150, 300]
         mock_audio.channels = 1
         mock_pydub.AudioSegment.from_file.return_value = mock_audio
@@ -216,7 +224,10 @@ class TestAudioFormatDetector:
                 format_info = AudioFormatDetector.detect_format_from_file(f.name)
                 assert format_info["format"] == "mp3"
             finally:
-                os.unlink(f.name)
+                try:
+                    f.close()
+                finally:
+                    os.unlink(f.name)
 
 
 class TestAudioValidator:
@@ -258,7 +269,10 @@ class TestAudioValidator:
                 assert result["is_valid"] is True
                 assert result["format"] == "mp3"
             finally:
-                os.unlink(f.name)
+                try:
+                    f.close()
+                finally:
+                    os.unlink(f.name)
 
 
 class TestAudioConverter:
@@ -293,7 +307,10 @@ class TestAudioConverter:
                 expected = base64.b64encode(test_data).decode()
                 assert base64_result == expected
             finally:
-                os.unlink(f.name)
+                try:
+                    f.close()
+                finally:
+                    os.unlink(f.name)
     
     def test_base64_to_file(self):
         """Test converting base64 to file."""
@@ -308,7 +325,10 @@ class TestAudioConverter:
                     result = read_file.read()
                     assert result == test_data
             finally:
-                os.unlink(f.name)
+                try:
+                    f.close()
+                finally:
+                    os.unlink(f.name)
 
 
 class TestAudioMetrics:

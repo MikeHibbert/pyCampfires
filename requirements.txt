@@ -27,3 +27,4 @@ flake8>=6.0.0
 # Optional dependencies (uncomment as needed)
 # boto3>=1.26.0  # For S3Driver
 # redis>=4.5.0   # For RedisDriver
+json5

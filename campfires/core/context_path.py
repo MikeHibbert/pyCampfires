@@ -25,12 +25,14 @@ class ContextType(Enum):
     """Types of context content."""
     DOCUMENT = "document"
     CODE = "code"
+    MODEL = "model"
     CONVERSATION = "conversation"
     METADATA = "metadata"
     EMBEDDING = "embedding"
     KNOWLEDGE = "knowledge"
     TEMPORAL = "temporal"
     SPATIAL = "spatial"
+    PROJECT = "project"
 
 
 class AccessPattern(Enum):

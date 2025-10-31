@@ -7,8 +7,10 @@ resource allocation across multiple campfire instances.
 """
 
 import asyncio
+import time
 import logging
 import uuid
+import os
 from typing import List, Dict, Any, Optional, Type, Union
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -18,11 +20,26 @@ from .camper import Camper
 from .torch import Torch
 from .orchestration import SubTask, RoleRequirement
 from ..party_box.box_driver import BoxDriver
-from ..mcp.protocol import MCPProtocol
-from ..core.openrouter import LLMCamperMixin, OpenRouterConfig
-from ..core.ollama import OllamaConfig
+from campfires.mcp.protocol import MCPMessage, MCPProtocol
+from ..mcp.ollama_protocol import OllamaMCPProtocol
+from ..core.ollama import OllamaConfig, OllamaClient
+try:
+    from ..mcp.openrouter_protocol import OpenRouterMCPProtocol  # type: ignore
+    from ..core.openrouter import OpenRouterConfig  # type: ignore
+except Exception:
+    OpenRouterMCPProtocol = None  # type: ignore
+    OpenRouterConfig = None  # type: ignore
 from ..core.multimodal_ollama import MultimodalOllamaConfig, OllamaMultimodalCamper
-
+try:
+    from ..core.langchain_adapter import LangChainAdapter  # type: ignore
+except Exception:
+    LangChainAdapter = None  # type: ignore
+from .graph_store import InMemoryGraphStore
+try:
+    from .neo4j_graph_store import Neo4jGraphStore  # type: ignore
+except Exception:
+    Neo4jGraphStore = None  # type: ignore
+import logging
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +69,9 @@ class CampfireInstance:
     resource_usage: Dict[str, Any]
 
 
-class DynamicCamper(Camper, LLMCamperMixin):
+
+
+class DynamicCamper(Camper):
     """
     A dynamically created camper that adapts to specific role requirements.
     
@@ -71,21 +90,37 @@ class DynamicCamper(Camper, LLMCamperMixin):
         """
         super().__init__(party_box, config)
         self.role_requirement = role_requirement
-        self.llm_provider = config.get('llm_provider', 'openrouter')
-        
-        # Setup LLM capabilities based on provider
+        self.llm_provider = config.get('llm_provider', 'ollama')
+
+        logger.debug(f"DynamicCamper initialized with llm_provider: {self.llm_provider}")
+
         if self.llm_provider == 'ollama':
             ollama_config = OllamaConfig(
                 base_url=config.get('ollama_base_url', 'http://localhost:11434'),
-                model=config.get('ollama_model', 'llama2')
+                model=config.get('ollama_model', 'gemma3')
             )
-            self.setup_llm(ollama_config)
+            # Assuming a default transport if none is explicitly provided
+            # For now, we'll let the protocol handle its default transport
+            mcp_protocol = OllamaMCPProtocol(ollama_config=ollama_config)
+            llm_config = ollama_config
+            self.llm_config = llm_config
+            self.mcp_protocol = mcp_protocol
+            # Start the MCP protocol transport
+            asyncio.create_task(self.mcp_protocol.start())
+            logger.debug(f"OllamaMCPProtocol initialized for {self.llm_provider} with config: {ollama_config}")
+        elif self.llm_provider == 'langchain' and LangChainAdapter:
+            # Minimal LangChain path using Ollama backend
+            base_url = config.get('ollama_base_url', 'http://localhost:11434')
+            model = config.get('ollama_model', 'gemma3')
+            try:
+                self.langchain_adapter = LangChainAdapter(provider='ollama', model=model, base_url=base_url)
+                self.llm_config = OllamaConfig(base_url=base_url, model=model)
+                self.mcp_protocol = None  # LangChain path does not require MCP by default
+                logger.debug(f"LangChainAdapter initialized with Ollama backend: {model} @ {base_url}")
+            except Exception as e:
+                raise ValueError(f"Failed to initialize LangChainAdapter: {e}")
         else:
-            # Default to OpenRouter
-            openrouter_config = OpenRouterConfig(
-                api_key=config.get('openrouter_api_key', '')
-            )
-            self.setup_llm(openrouter_config)
+            raise ValueError(f"Unsupported LLM provider: {self.llm_provider}")
         
         # Configure role-specific behavior
         self._configure_role_behavior()
@@ -119,6 +154,31 @@ class DynamicCamper(Camper, LLMCamperMixin):
         Always strive for excellence while staying true to your role.
         """
     
+    async def _wait_for_mcp_response(self, message_id: str, timeout: int = 60) -> Optional[MCPMessage]:
+        """
+        Waits for an MCP response with a specific message_id.
+        """
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            # In a real scenario, this would involve a more sophisticated message queue or event system
+            # For now, we'll assume the response comes back on the same channel and we can poll (not ideal for production)
+            # This is a simplification for demonstration purposes.
+            # A proper implementation would involve a dedicated response channel and a listener.
+            await asyncio.sleep(0.1)  # Small delay to prevent busy-waiting
+            # This part needs to be replaced with actual message reception logic
+            # For now, we'll simulate a response if the message_id matches (this is NOT how it should work)
+            # This is a temporary placeholder.
+            # In a real system, the MCPProtocol would have a way to retrieve responses by message_id.
+            # Since we don't have that, we'll just return a dummy response for now.
+            # This will be addressed when the MCPProtocol is fully implemented.
+            return MCPMessage(
+                channel="llm_responses",
+                data={"response": "Simulated LLM response for " + message_id},
+                message_type="llm_response",
+                message_id=message_id
+            )
+        return None
+
     async def process(self, torch: Torch) -> Torch:
         """
         Process a torch using role-specific expertise.
@@ -141,13 +201,38 @@ class DynamicCamper(Camper, LLMCamperMixin):
             Provide a thorough response that demonstrates your expertise in {', '.join(self.expertise_areas)}.
             """
             
-            # Process using LLM
-            result = await self.llm_completion_with_mcp(processing_prompt)
+            # Process using LLM via MCP
+            llm_request_message = MCPMessage(
+                channel="llm_requests",  # Or a more specific channel if needed
+                data={
+                    "prompt": processing_prompt,
+                    "model": self.llm_config.model,
+                    "temperature": self.llm_config.temperature,
+                    "max_tokens": self.llm_config.max_tokens
+                },
+                message_type="llm_request"
+            )
+            
+            await self.mcp_protocol.send_message(
+                channel=llm_request_message.channel,
+                data=llm_request_message.data,
+                message_type=llm_request_message.message_type,
+                message_id=llm_request_message.message_id
+            )
+
+            # Wait for the LLM response
+            response_message = await self._wait_for_mcp_response(llm_request_message.message_id)
+            if response_message and response_message.data.get("response"):
+                result = response_message.data["response"]
+            else:
+                result = "Error: No LLM response received."
             
             # Create result torch
             result_torch = Torch(
                 claim=result,
                 confidence=0.85,  # Base confidence for role-specific processing
+                source_campfire=torch.source_campfire,
+                channel=torch.channel,
                 metadata={
                     **torch.metadata,
                     'processed_by': self.role_name,
@@ -156,7 +241,7 @@ class DynamicCamper(Camper, LLMCamperMixin):
                 }
             )
             
-            logger.info(f"Task processed by {self.role_name}: {torch.id}")
+            logger.info(f"Task processed by {self.role_name}: {torch.torch_id}")
             return result_torch
             
         except Exception as e:
@@ -197,8 +282,11 @@ class DynamicCamper(Camper, LLMCamperMixin):
             Provide a thorough response that demonstrates your expertise in {', '.join(self.expertise_areas)}.
             """
             
-            # Process using LLM
-            result = await self.llm_completion_with_mcp(processing_prompt)
+            # Process using appropriate LLM provider
+            if self.llm_provider == 'langchain' and hasattr(self, 'langchain_adapter') and self.langchain_adapter:
+                result = await self.langchain_adapter.async_generate(processing_prompt)
+            else:
+                result = await self.llm_completion_with_mcp(processing_prompt)
             
             return {
                 'claim': result,
@@ -252,6 +340,53 @@ class CampfireFactory:
         self.party_box = party_box
         self.mcp_protocol = mcp_protocol
         self.config = config or {}
+
+        # Initialize shared graph store for Zeitgeist-style collaboration
+        self.graph_store = None
+        try:
+            graph_enabled = self.config.get('graph_enabled', True)
+            if graph_enabled:
+                backend = (self.config.get('graph_backend') or os.getenv('CAMPFIRES_GRAPH_BACKEND') or 'inmemory').lower()
+                if backend == 'neo4j' and Neo4jGraphStore is not None:
+                    uri = self.config.get('neo4j_uri') or os.getenv('NEO4J_URI', 'bolt://localhost:7687')
+                    user = self.config.get('neo4j_user') or os.getenv('NEO4J_USER', 'neo4j')
+                    password = self.config.get('neo4j_password') or os.getenv('NEO4J_PASSWORD', 'campfires')
+                    database = self.config.get('neo4j_database') or os.getenv('NEO4J_DATABASE')
+                    self.graph_store = Neo4jGraphStore(uri=uri, user=user, password=password, database=database)
+                else:
+                    self.graph_store = InMemoryGraphStore()
+        except Exception as e:
+            logger.warning(f"Graph store initialization failed, continuing without graph: {e}")
+
+        # Feature flag: enable LangChain-backed processing via config or env
+        # Only set default provider if not already specified
+        if 'llm_provider' not in self.config:
+            enable_langchain = False
+            env_flag = os.getenv('CAMPFIRES_ENABLE_LANGCHAIN')
+            if env_flag is not None:
+                enable_langchain = env_flag.strip().lower() in ('1', 'true', 'yes', 'on')
+            enable_langchain = self.config.get('enable_langchain', enable_langchain)
+            if enable_langchain and LangChainAdapter is not None:
+                self.config['llm_provider'] = 'langchain'
+            else:
+                self.config['llm_provider'] = self.config.get('llm_provider', 'ollama')
+
+        # Auto-select MCP source if none provided; default to Ollama for local dev
+        if self.mcp_protocol is None:
+            mcp_source = (self.config.get('mcp_source') or os.getenv('CAMPFIRES_MCP_SOURCE') or 'ollama').lower()
+            if mcp_source == 'ollama':
+                base_url = self.config.get('ollama_base_url', 'http://localhost:11434')
+                model = self.config.get('ollama_model')  # optional, OllamaConfig has its own default
+                ollama_cfg = OllamaConfig(base_url=base_url, model=model) if model else OllamaConfig(base_url=base_url)
+                self.mcp_protocol = OllamaMCPProtocol(ollama_config=ollama_cfg)
+            elif mcp_source == 'openrouter' and OpenRouterMCPProtocol and OpenRouterConfig:
+                api_key = self.config.get('openrouter_api_key') or os.getenv('OPENROUTER_API_KEY', '')
+                model = self.config.get('model') or self.config.get('openrouter_model')
+                openrouter_cfg = OpenRouterConfig(api_key=api_key, model=model)
+                self.mcp_protocol = OpenRouterMCPProtocol(openrouter_config=openrouter_cfg)
+            else:
+                # Fallback ensures local default works even if unknown source
+                self.mcp_protocol = OllamaMCPProtocol(ollama_config=OllamaConfig())
         
         # Factory state
         self.active_instances: Dict[str, CampfireInstance] = {}
@@ -383,7 +518,7 @@ class CampfireFactory:
             camper_config = {
                 **template.default_config,
                 'name': f"{role_requirement.role_name}_camper",
-                'llm_provider': self.config.get('llm_provider', 'openrouter'),
+                'llm_provider': self.config.get('llm_provider', 'ollama'),
                 'openrouter_api_key': self.config.get('openrouter_api_key', ''),
                 'model': self.config.get('model', 'meta-llama/llama-3.2-3b-instruct:free'),
                 'ollama_base_url': self.config.get('ollama_base_url', 'http://localhost:11434'),
@@ -402,8 +537,10 @@ class CampfireFactory:
                 campers=[dynamic_camper],
                 party_box=self.party_box,
                 mcp_protocol=self.mcp_protocol,
+                graph_store=self.graph_store,
                 config=template.default_config
             )
+            await campfire.start()
             
             # Create instance record
             instance = CampfireInstance(
@@ -458,7 +595,7 @@ class CampfireFactory:
             camper_config = {
                 **config,
                 'name': f"{template_name}_camper",
-                'llm_provider': self.config.get('llm_provider', 'openrouter'),
+                'llm_provider': self.config.get('llm_provider', 'ollama'),
                 'openrouter_api_key': self.config.get('openrouter_api_key', ''),
                 'model': self.config.get('model', 'meta-llama/llama-3.2-3b-instruct:free'),
                 'ollama_base_url': self.config.get('ollama_base_url', 'http://localhost:11434'),
@@ -487,8 +624,9 @@ class CampfireFactory:
                 campers=[camper],
                 party_box=self.party_box,
                 mcp_protocol=self.mcp_protocol,
-                config=config
+                graph_store=self.graph_store
             )
+            await campfire.start()
             
             # Create instance record
             instance = CampfireInstance(
@@ -505,7 +643,7 @@ class CampfireFactory:
             self.active_instances[instance_id] = instance
             
             logger.info(f"Created campfire instance {instance_id} from template {template_name}")
-            return instance_id
+            return instance
             
         except Exception as e:
             logger.error(f"Failed to create campfire from template {template_name}: {e}")

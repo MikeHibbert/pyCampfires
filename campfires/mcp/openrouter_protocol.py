@@ -41,11 +41,13 @@ class OpenRouterMCPProtocol(MCPProtocol):
         await super().start()
         
         if self.openrouter_client:
+            await self.openrouter_client.start_session()
             logger.info("OpenRouter client ready for MCP operations")
     
     async def stop(self) -> None:
         """Stop the MCP protocol and OpenRouter client."""
         if self.openrouter_client:
+            await self.openrouter_client.close_session()
             logger.info("OpenRouter client session closed")
         
         await super().stop()

@@ -8,14 +8,16 @@ each component.
 
 import asyncio
 import logging
+import uuid
 from typing import List, Dict, Any, Optional, Tuple, Union
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 from .torch import Torch
 from .camper import Camper
 from ..mcp.protocol import MCPProtocol
-from ..core.openrouter import LLMCamperMixin, OpenRouterConfig
+from ..core.openrouter import LLMCamperMixin
+from ..core.ollama import OllamaConfig
 
 
 logger = logging.getLogger(__name__)
@@ -38,8 +40,12 @@ class SubTask:
     dependencies: List[str]
     priority: int
     estimated_complexity: TaskComplexity
-    context_requirements: List[str]
+    context_requirements: List[Union[str, Dict[str, Any]]]
     success_criteria: str
+    source_campfire: Optional[str] = None
+    channel: Optional[str] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    estimated_duration: int = 0 # Add estimated_duration with a default value
 
 
 @dataclass
@@ -72,10 +78,12 @@ class TaskDecomposer(LLMCamperMixin):
         self.mcp_protocol = mcp_protocol
         
         # Setup LLM capabilities
-        openrouter_config = OpenRouterConfig(
-            api_key=config.get('openrouter_api_key', '')
+        ollama_config = OllamaConfig(
+            base_url=config.get('ollama_base_url', 'http://localhost:11434'),
+            model=config.get('ollama_model', 'gemma3:latest')
         )
-        self.setup_llm(openrouter_config, mcp_protocol)
+        self.setup_llm(ollama_config, mcp_protocol)
+
         
         # Task analysis templates
         self.decomposition_prompt_template = """
@@ -124,12 +132,13 @@ class TaskDecomposer(LLMCamperMixin):
             """
             
             analysis_result = await self.llm_completion_with_mcp(analysis_prompt)
+            analysis_text = analysis_result.get('text', str(analysis_result)) # Extract 'text' or convert dict to string
             
             return {
-                "analysis": analysis_result,
-                "complexity": self._extract_complexity(analysis_result),
-                "expertise_areas": self._extract_expertise_areas(analysis_result),
-                "challenges": self._extract_challenges(analysis_result)
+                "analysis": analysis_text,
+                "complexity": self._extract_complexity(analysis_text),
+                "expertise_areas": self._extract_expertise_areas(analysis_text),
+                "challenges": self._extract_challenges(analysis_text)
             }
             
         except Exception as e:
@@ -182,6 +191,8 @@ class TaskDecomposer(LLMCamperMixin):
                 priority=5,
                 estimated_complexity=TaskComplexity.MODERATE,
                 context_requirements=[],
+                source_campfire=torch.source_campfire,
+                channel=torch.channel,
                 success_criteria="Complete the original task"
             )]
     
@@ -218,14 +229,15 @@ class TaskDecomposer(LLMCamperMixin):
         # Simple extraction - could be enhanced
         return ["complexity_management", "coordination", "quality_assurance"]
     
-    def _parse_decomposition_result(self, result: str, max_subtasks: int) -> List[SubTask]:
+    def _parse_decomposition_result(self, result: Dict[str, Any], max_subtasks: int) -> List[SubTask]:
         """Parse LLM decomposition result into SubTask objects."""
         # This is a simplified parser - in production, you might want more sophisticated parsing
         subtasks = []
         
-        # For now, create a basic structure based on the result
-        # This would be enhanced with proper parsing logic
-        lines = result.split('\n')
+        # Extract the actual completion text from the dictionary
+        completion_text = result.get('completion', {}).get('text', '')
+
+        lines = completion_text.split('\n')
         current_subtask = None
         subtask_count = 0
         
@@ -291,10 +303,12 @@ class DynamicRoleGenerator(LLMCamperMixin):
         self.mcp_protocol = mcp_protocol
         
         # Setup LLM capabilities
-        openrouter_config = OpenRouterConfig(
-            api_key=config.get('openrouter_api_key', '')
+        ollama_config = OllamaConfig(
+            base_url=config.get('ollama_base_url', 'http://localhost:11434'),
+            model=config.get('ollama_model', 'gemma3:latest')
         )
-        self.setup_llm(openrouter_config, mcp_protocol)
+        self.setup_llm(ollama_config, mcp_protocol)
+        self.llm_client = self._llm_client # Expose llm_client
         
         # Role generation templates
         self.role_generation_prompt = """
@@ -369,14 +383,15 @@ class DynamicRoleGenerator(LLMCamperMixin):
         
         return role_requirements
     
-    def _parse_role_specification(self, spec: str, subtask: SubTask) -> RoleRequirement:
+    def _parse_role_specification(self, spec: Dict[str, Any], subtask: SubTask) -> RoleRequirement:
+        completion_text = spec.get('completion', {}).get('text', '')
         """Parse LLM-generated role specification into RoleRequirement object."""
         # Simplified parsing - would be enhanced in production
         return RoleRequirement(
             role_name=subtask.required_role,
-            expertise_areas=self._extract_expertise_from_spec(spec),
-            required_capabilities=self._extract_capabilities_from_spec(spec),
-            personality_traits=self._extract_traits_from_spec(spec),
+            expertise_areas=self._extract_expertise_from_spec(completion_text),
+            required_capabilities=self._extract_capabilities_from_spec(completion_text),
+            personality_traits=self._extract_traits_from_spec(completion_text),
             context_sources=subtask.context_requirements
         )
     
@@ -425,6 +440,10 @@ class RoleAwareOrchestrator:
         # Initialize components
         self.task_decomposer = TaskDecomposer(config, mcp_protocol)
         self.role_generator = DynamicRoleGenerator(config, mcp_protocol)
+
+    @property
+    def llm_client(self):
+        return self.role_generator.llm_client
         
         # Orchestration state
         self.active_orchestrations: Dict[str, Dict[str, Any]] = {}
@@ -439,7 +458,7 @@ class RoleAwareOrchestrator:
         Returns:
             Dictionary containing orchestration plan and metadata
         """
-        orchestration_id = f"orch_{torch.id}"
+        orchestration_id = f"orch_{uuid.uuid4().hex}"
         
         try:
             logger.info(f"Starting role-aware orchestration for task: {torch.claim}")
