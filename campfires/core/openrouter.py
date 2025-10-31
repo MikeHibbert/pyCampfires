@@ -7,11 +7,12 @@ import json
 import asyncio
 import logging
 import time
-from typing import Dict, List, Any, Optional, Union, AsyncGenerator
+from typing import Dict, List, Optional, Any, Union, AsyncGenerator
 from dataclasses import dataclass, field
+from ..core.ollama import OllamaConfig, OllamaClient, OllamaMCPClient
 from datetime import datetime
 import aiohttp
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -74,8 +75,8 @@ class ChatResponse(BaseModel):
     choices: List[Dict[str, Any]]
     usage: Optional[Dict[str, Any]] = None
     
-    class Config:
-        extra = "allow"  # Allow extra fields from the API response
+    # Pydantic v2: allow extra fields from the API response
+    model_config = ConfigDict(extra="allow")
 
 
 class OpenRouterClient:
@@ -511,19 +512,32 @@ class LLMCamperMixin:
         self.llm_client: Optional[OpenRouterClient] = None
         self._llm_config: Optional[OpenRouterConfig] = None
     
-    def setup_llm(self, config: OpenRouterConfig = None, mcp_protocol: MCPProtocol = None) -> None:
+    def setup_llm(self, config: Union[OpenRouterConfig, OllamaConfig] = None, mcp_protocol: MCPProtocol = None) -> None:
         """
         Setup LLM client with optional MCP protocol support.
         
         Args:
-            config: OpenRouter configuration
+            config: LLM configuration (OpenRouterConfig or OllamaConfig)
             mcp_protocol: Optional MCP protocol for inter-camper communication
         """
         self._llm_config = config
+        if isinstance(config, OpenRouterConfig):
+            self._llm_client = OpenRouterClient(config)
+        elif isinstance(config, OllamaConfig):
+            self._llm_client = OllamaMCPClient(config, mcp_protocol)
+        else:
+            raise ValueError("Unsupported LLM config type")
+
         # Pass MCP protocol if available (e.g., from parent Camper)
         if mcp_protocol is None and hasattr(self, 'mcp_protocol'):
             mcp_protocol = self.mcp_protocol
-        self.llm_client = OpenRouterClient(config, mcp_protocol=mcp_protocol)
+        
+        if isinstance(config, OpenRouterConfig):
+            self.llm_client = OpenRouterClient(config, mcp_protocol=mcp_protocol)
+        elif isinstance(config, OllamaConfig):
+            self.llm_client = OllamaMCPClient(config, mcp_protocol=mcp_protocol)
+        else:
+            raise ValueError("Unsupported LLM configuration type provided.")
     
     async def llm_completion(
         self, 
@@ -548,9 +562,16 @@ class LLMCamperMixin:
             self.setup_llm()
         
         async with self.llm_client:
-            return await self.llm_client.simple_completion(
-                prompt, model, system_prompt, **kwargs
-            )
+            if isinstance(self.llm_client, OpenRouterClient):
+                return await self.llm_client.simple_completion(
+                    prompt, model, system_prompt, **kwargs
+                )
+            elif isinstance(self.llm_client, OllamaClient):
+                return await self.llm_client.generate(
+                    prompt, model, **kwargs
+                )
+            else:
+                raise ValueError("Unsupported LLM client type for completion.")
     
     async def llm_chat(
         self, 
@@ -573,7 +594,16 @@ class LLMCamperMixin:
             self.setup_llm()
         
         async with self.llm_client:
-            return await self.llm_client.chat_completion(messages, model, **kwargs)
+            if isinstance(self.llm_client, OpenRouterClient):
+                return await self.llm_client.chat_completion(messages, model, **kwargs)
+            elif isinstance(self.llm_client, OllamaClient):
+                # Ollama's chat method expects a list of dicts, not ChatMessage objects
+                ollama_messages = [{'role': m.role, 'content': m.content} for m in messages]
+                response_content = await self.llm_client.chat(ollama_messages, model, **kwargs)
+                # Convert Ollama's response to ChatResponse for consistency
+                return ChatResponse(choices=[{'message': {'role': 'assistant', 'content': response_content}}])
+            else:
+                raise ValueError("Unsupported LLM client type for chat.")
     
     async def llm_stream(
         self, 
@@ -596,8 +626,18 @@ class LLMCamperMixin:
             self.setup_llm()
         
         async with self.llm_client:
-            async for chunk in self.llm_client.stream_chat_completion(messages, model, **kwargs):
-                yield chunk
+            if isinstance(self.llm_client, OpenRouterClient):
+                async for chunk in self.llm_client.stream_chat_completion(messages, model, **kwargs):
+                    yield chunk
+            elif isinstance(self.llm_client, OllamaClient):
+                # Ollama's chat method can be used for streaming if stream is True in config
+                ollama_messages = [{'role': m.role, 'content': m.content} for m in messages]
+                self.llm_client.config.stream = True # Ensure streaming is enabled
+                async for chunk in self.llm_client.chat(ollama_messages, model, **kwargs):
+                    yield chunk
+                self.llm_client.config.stream = False # Reset stream to false after streaming
+            else:
+                raise ValueError("Unsupported LLM client type for streaming.")
     
     async def llm_completion_with_mcp(
         self, 
@@ -620,7 +660,13 @@ class LLMCamperMixin:
             self.setup_llm()
         
         async with self.llm_client:
-            return await self.llm_client.send_mcp_message(prompt, channel)
+            return await self.llm_client.send_mcp_message({
+                "type": "completion",
+                "params": {
+                    "prompt": prompt,
+                    "channel": channel
+                }
+            })
     
     async def llm_chat_with_mcp(
         self, 

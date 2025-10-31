@@ -1021,3 +1021,79 @@ The experiential RAG demo simulates job search experiences under different psych
 - [Neutral Experience](demos/party_box/other/alex_job_search_neutral_experience_20251023_004109.html)
 
 These reports include narrative storytelling, mental health outlook summaries, and actionable insights from simulated scenarios.
+
+## Workflow Graph Exporters
+
+Campfires can export workflow graphs for visualization and analysis. Two exporters are available and can be enabled independently via environment variables:
+
+- `CAMPFIRES_ENABLE_LANGGRAPH_GUI`: When set to `1`, emits a GUI-friendly JSON to `reports\team_rag_langgraph.json` from the Team RAG Auditor demo.
+- `CAMPFIRES_ENABLE_LANGGRAPH_STUDIO`: When set to `1`, emits a standalone LangGraph Studio-friendly JSON to `reports\team_rag_langgraph_studio.json`.
+- Optional: `CAMPFIRES_LANGGRAPH_EXPORT_FORMAT=studio` adds a Studio-style projection inside the GUI export for compatible viewers.
+
+### Quick Usage
+
+```powershell
+# Studio-only export
+$env:CAMPFIRES_ENABLE_LANGGRAPH_STUDIO = "1"
+$env:CAMPFIRES_ENABLE_LANGGRAPH_GUI = "0"
+python demos/team_rag_auditor_demo.py
+
+# GUI-only export
+$env:CAMPFIRES_ENABLE_LANGGRAPH_GUI = "1"
+$env:CAMPFIRES_ENABLE_LANGGRAPH_STUDIO = "0"
+python demos/team_rag_auditor_demo.py
+
+# Both exports
+$env:CAMPFIRES_ENABLE_LANGGRAPH_GUI = "1"
+$env:CAMPFIRES_ENABLE_LANGGRAPH_STUDIO = "1"
+python demos/team_rag_auditor_demo.py
+```
+
+### Filter and Minimal Mode
+
+- `CAMPFIRES_EXPORT_LABELS`: Comma-separated labels to include in exports. Defaults to all labels. Example: `Orderer,Stage,Procedure,ProcedureStep,Finding`.
+
+### Graph Backend Selection
+
+- Default backend is in-memory. Enable Neo4j in your own apps via Factory by setting:
+  - `CAMPFIRES_GRAPH_BACKEND=neo4j`
+  - `NEO4J_URI=bolt://localhost:7687`
+  - `NEO4J_USER=neo4j`
+  - `NEO4J_PASSWORD=<password>`
+  - Optional: `NEO4J_DATABASE=<database>`
+- Demo-specific toggle: In `demos/team_rag_auditor_demo.py`, you can use:
+  - `CAMPFIRES_USE_NEO4J=1`
+  - The same `NEO4J_*` variables above are respected.
+- Notes:
+  - `CAMPFIRES_GRAPH_BACKEND` is used by `CampfireFactory` for backend selection in applications.
+  - `CAMPFIRES_USE_NEO4J` only affects the Team RAG Auditor demo and is independent of Factory configuration.
+- `CAMPFIRES_EXPORT_MINIMAL`: When set to `1`, trims node properties and edge data to essentials for compact viewing.
+
+Examples:
+
+```powershell
+# GUI export with filtered labels
+$env:CAMPFIRES_ENABLE_LANGGRAPH_GUI = "1"
+$env:CAMPFIRES_EXPORT_LABELS = "Orderer,Stage,Procedure,ProcedureStep,Finding"
+python demos/team_rag_auditor_demo.py
+
+# Studio export in minimal mode
+$env:CAMPFIRES_ENABLE_LANGGRAPH_STUDIO = "1"
+$env:CAMPFIRES_EXPORT_MINIMAL = "1"
+python demos/team_rag_auditor_demo.py
+```
+
+### Output Overview
+
+- GUI export (`team_rag_langgraph.json`)
+  - Keys: `name`, `nodes`, `edges`, `metadata`
+  - Nodes include labels like `Orderer`, `Selection`, `Camper`, `Auditor`, `Task`, `Stage`, `Finding`, `Procedure`, `ProcedureStep`.
+  - `metadata.process_flows` summarizes stage findings in time order; `metadata.procedures` captures CAMAS procedures and ordered steps.
+  - When `CAMPFIRES_LANGGRAPH_EXPORT_FORMAT=studio`, a `studio` projection is included with `nodes`, `edges`, and `start_node`.
+
+- Studio export (`team_rag_langgraph_studio.json`)
+  - Keys: `nodes`, `edges`, `start_node`, `metadata`
+  - Nodes are `{ id, type, data }`; edges are `{ source, target, type, data }`.
+  - `start_node` points to the `Orderer` node id when available.
+
+Both exporters stringify non-JSON-serializable properties and include essential relationships such as `MADE_SELECTION`, `CREATED_MEMBER`, `ASSIGNED_ROLE`, `CREATED`, `HAS_FINDING`, `HAS_PROCEDURE`, `HAS_STEP`, and `GENERATED_FINDING`.
