@@ -76,6 +76,18 @@ from .core.audio_utils import (
 # Utility functions
 from .utils.hash_utils import generate_torch_id, generate_asset_id
 from .utils.template_loader import TemplateLoader, render_template
+from .core import (
+    EventBus,
+    SecurityHooks,
+    RoutingStrategy,
+    BasicRuleBasedRouting,
+    TargetDecision,
+    SessionManager,
+    InMemorySessionManager,
+    ToolAdapter,
+    AsyncScheduler,
+    ProviderRegistry
+)
 
 __all__ = [
     # Core framework
@@ -140,4 +152,14 @@ __all__ = [
     "generate_asset_id",
     "TemplateLoader",
     "render_template",
+    "EventBus",
+    "SecurityHooks",
+    "RoutingStrategy",
+    "BasicRuleBasedRouting",
+    "TargetDecision",
+    "SessionManager",
+    "InMemorySessionManager",
+    "ToolAdapter",
+    "AsyncScheduler",
+    "ProviderRegistry",
 ]

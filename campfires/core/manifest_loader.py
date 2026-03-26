@@ -148,6 +148,15 @@ class ManifestLoader:
             
             # Validate manifest
             self._validate_manifest(processed_data, 'campfire')
+
+            known_keys = {'version','name','description','base_config','campers','environment','resources','networking','volumes','metadata'}
+            unknown = {k: v for k, v in processed_data.items() if k not in known_keys}
+            md = processed_data.get('metadata', {}) or {}
+            if unknown:
+                extra = md.get('extra', {})
+                extra.update(unknown)
+                md['extra'] = extra
+            processed_data['metadata'] = md
             
             # Create manifest object
             manifest = CampfireManifest(
@@ -199,6 +208,15 @@ class ManifestLoader:
             
             # Validate manifest
             self._validate_manifest(processed_data, 'orchestration')
+
+            known_keys = {'version','name','description','topology','tasks','dependencies','environment','resources','timeout_minutes','retry_policy','metadata'}
+            unknown = {k: v for k, v in processed_data.items() if k not in known_keys}
+            md = processed_data.get('metadata', {}) or {}
+            if unknown:
+                extra = md.get('extra', {})
+                extra.update(unknown)
+                md['extra'] = extra
+            processed_data['metadata'] = md
             
             # Create manifest object
             manifest = OrchestrationManifest(
@@ -251,6 +269,15 @@ class ManifestLoader:
             
             # Validate manifest
             self._validate_manifest(processed_data, 'party')
+
+            known_keys = {'version','name','description','campfires','orchestration','shared_environment','shared_resources','networking','metadata'}
+            unknown = {k: v for k, v in processed_data.items() if k not in known_keys}
+            md = processed_data.get('metadata', {}) or {}
+            if unknown:
+                extra = md.get('extra', {})
+                extra.update(unknown)
+                md['extra'] = extra
+            processed_data['metadata'] = md
             
             # Create manifest object
             manifest = PartyManifest(

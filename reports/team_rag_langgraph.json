@@ -1,0 +1,944 @@
+{
+  "name": "Campfires Team RAG Workflow",
+  "nodes": [
+    {
+      "id": "orderer:Orderer",
+      "label": "Orderer",
+      "properties": {
+        "name": "Orderer"
+      }
+    },
+    {
+      "id": "selection:328051735e114e0fad8705ebb7406a0b",
+      "label": "Selection",
+      "properties": {
+        "criteria": {
+          "roles": [
+            "Problem Solver",
+            "Designer",
+            "Implementer"
+          ],
+          "strategy": "all_available"
+        },
+        "rationale": "Selected 3 campers; Roles: Problem Solver x1, Designer x1, Implementer x1; Criteria: roles=['Problem Solver', 'Designer', 'Implementer'], strategy=all_available",
+        "team_size": 3,
+        "roles": {
+          "Problem Solver": 1,
+          "Designer": 1,
+          "Implementer": 1
+        }
+      }
+    },
+    {
+      "id": "camper:Team RAG Auditor Campfire:Alice",
+      "label": "Camper",
+      "properties": {
+        "name": "Alice",
+        "role": "Problem Solver"
+      }
+    },
+    {
+      "id": "camper:Team RAG Auditor Campfire:Bob",
+      "label": "Camper",
+      "properties": {
+        "name": "Bob",
+        "role": "Designer"
+      }
+    },
+    {
+      "id": "camper:Team RAG Auditor Campfire:Charlie",
+      "label": "Camper",
+      "properties": {
+        "name": "Charlie",
+        "role": "Implementer"
+      }
+    },
+    {
+      "id": "auditor:TeamAuditor",
+      "label": "Auditor",
+      "properties": {
+        "name": "TeamAuditor"
+      }
+    },
+    {
+      "id": "task:task_123",
+      "label": "Task",
+      "properties": {
+        "task_id": "task_123",
+        "topic": "develop a simple python script to calculate fibonacci sequence up to n."
+      }
+    },
+    {
+      "id": "stage:problem_solving",
+      "label": "Stage",
+      "properties": {
+        "name": "problem_solving"
+      }
+    },
+    {
+      "id": "finding:task_123:problem_solving:1761933607",
+      "label": "Finding",
+      "properties": {
+        "summary": "Task: Develop a simple Python script to calculate Fibonacci sequence up to N. | Result: FAIL | Confidence: 0.25 | Requirements Coverage: 0/3",
+        "importance": 0.25,
+        "tags": [
+          "problem_solving",
+          "fail"
+        ],
+        "timestamp": "2025-10-31T18:00:07.789961"
+      }
+    },
+    {
+      "id": "procedure:problem_solving",
+      "label": "Procedure",
+      "properties": {
+        "name": "problem_solving",
+        "type": "CAMAS"
+      }
+    },
+    {
+      "id": "procstep:task_123:problem_solving:1",
+      "label": "ProcedureStep",
+      "properties": {
+        "name": "attempt-1",
+        "actor": "Auditor",
+        "start_ts": "2025-10-31T18:00:07.789961",
+        "status": "fail",
+        "importance": 0.25
+      }
+    },
+    {
+      "id": "finding:task_123:problem_solving:1761933612",
+      "label": "Finding",
+      "properties": {
+        "summary": "Task: Develop a simple Python script to calculate Fibonacci sequence up to N. | Result: FAIL | Confidence: 0.25 | Requirements Coverage: 0/3",
+        "importance": 0.25,
+        "tags": [
+          "problem_solving",
+          "fail"
+        ],
+        "timestamp": "2025-10-31T18:00:12.805969"
+      }
+    },
+    {
+      "id": "procstep:task_123:problem_solving:2",
+      "label": "ProcedureStep",
+      "properties": {
+        "name": "attempt-2",
+        "actor": "Auditor",
+        "start_ts": "2025-10-31T18:00:12.805969",
+        "status": "fail",
+        "importance": 0.25
+      }
+    },
+    {
+      "id": "finding:task_123:problem_solving:1761933617",
+      "label": "Finding",
+      "properties": {
+        "summary": "Task: Develop a simple Python script to calculate Fibonacci sequence up to N. | Result: FAIL | Confidence: 0.25 | Requirements Coverage: 0/3",
+        "importance": 0.25,
+        "tags": [
+          "problem_solving",
+          "fail"
+        ],
+        "timestamp": "2025-10-31T18:00:17.820339"
+      }
+    },
+    {
+      "id": "procstep:task_123:problem_solving:3",
+      "label": "ProcedureStep",
+      "properties": {
+        "name": "attempt-3",
+        "actor": "Auditor",
+        "start_ts": "2025-10-31T18:00:17.820339",
+        "status": "fail",
+        "importance": 0.25
+      }
+    },
+    {
+      "id": "stage:design",
+      "label": "Stage",
+      "properties": {
+        "name": "design"
+      }
+    },
+    {
+      "id": "finding:task_123:design:1761933617",
+      "label": "Finding",
+      "properties": {
+        "summary": "Task: Develop a simple Python script to calculate Fibonacci sequence up to N. | Result: FAIL | Confidence: 0.25 | Requirements Coverage: 0/3",
+        "importance": 0.25,
+        "tags": [
+          "design",
+          "fail"
+        ],
+        "timestamp": "2025-10-31T18:00:17.838978"
+      }
+    },
+    {
+      "id": "procedure:design",
+      "label": "Procedure",
+      "properties": {
+        "name": "design",
+        "type": "CAMAS"
+      }
+    },
+    {
+      "id": "procstep:task_123:design:1",
+      "label": "ProcedureStep",
+      "properties": {
+        "name": "attempt-1",
+        "actor": "Auditor",
+        "start_ts": "2025-10-31T18:00:17.838978",
+        "status": "fail",
+        "importance": 0.25
+      }
+    },
+    {
+      "id": "finding:task_123:design:1761933622",
+      "label": "Finding",
+      "properties": {
+        "summary": "Task: Develop a simple Python script to calculate Fibonacci sequence up to N. | Result: FAIL | Confidence: 0.25 | Requirements Coverage: 0/3",
+        "importance": 0.25,
+        "tags": [
+          "design",
+          "fail"
+        ],
+        "timestamp": "2025-10-31T18:00:22.856903"
+      }
+    },
+    {
+      "id": "procstep:task_123:design:2",
+      "label": "ProcedureStep",
+      "properties": {
+        "name": "attempt-2",
+        "actor": "Auditor",
+        "start_ts": "2025-10-31T18:00:22.856903",
+        "status": "fail",
+        "importance": 0.25
+      }
+    },
+    {
+      "id": "finding:task_123:design:1761933627",
+      "label": "Finding",
+      "properties": {
+        "summary": "Task: Develop a simple Python script to calculate Fibonacci sequence up to N. | Result: FAIL | Confidence: 0.25 | Requirements Coverage: 0/3",
+        "importance": 0.25,
+        "tags": [
+          "design",
+          "fail"
+        ],
+        "timestamp": "2025-10-31T18:00:27.885932"
+      }
+    },
+    {
+      "id": "procstep:task_123:design:3",
+      "label": "ProcedureStep",
+      "properties": {
+        "name": "attempt-3",
+        "actor": "Auditor",
+        "start_ts": "2025-10-31T18:00:27.885932",
+        "status": "fail",
+        "importance": 0.25
+      }
+    },
+    {
+      "id": "stage:implementation",
+      "label": "Stage",
+      "properties": {
+        "name": "implementation"
+      }
+    },
+    {
+      "id": "finding:task_123:implementation:1761933627",
+      "label": "Finding",
+      "properties": {
+        "summary": "Task: Develop a simple Python script to calculate Fibonacci sequence up to N. | Result: FAIL | Confidence: 0.25 | Requirements Coverage: 0/3",
+        "importance": 0.25,
+        "tags": [
+          "implementation",
+          "fail"
+        ],
+        "timestamp": "2025-10-31T18:00:27.899714"
+      }
+    },
+    {
+      "id": "procedure:implementation",
+      "label": "Procedure",
+      "properties": {
+        "name": "implementation",
+        "type": "CAMAS"
+      }
+    },
+    {
+      "id": "procstep:task_123:implementation:1",
+      "label": "ProcedureStep",
+      "properties": {
+        "name": "attempt-1",
+        "actor": "Auditor",
+        "start_ts": "2025-10-31T18:00:27.899714",
+        "status": "fail",
+        "importance": 0.25
+      }
+    },
+    {
+      "id": "finding:task_123:implementation:1761933632",
+      "label": "Finding",
+      "properties": {
+        "summary": "Task: Develop a simple Python script to calculate Fibonacci sequence up to N. | Result: FAIL | Confidence: 0.25 | Requirements Coverage: 0/3",
+        "importance": 0.25,
+        "tags": [
+          "implementation",
+          "fail"
+        ],
+        "timestamp": "2025-10-31T18:00:32.919026"
+      }
+    },
+    {
+      "id": "procstep:task_123:implementation:2",
+      "label": "ProcedureStep",
+      "properties": {
+        "name": "attempt-2",
+        "actor": "Auditor",
+        "start_ts": "2025-10-31T18:00:32.919026",
+        "status": "fail",
+        "importance": 0.25
+      }
+    },
+    {
+      "id": "finding:task_123:implementation:1761933637",
+      "label": "Finding",
+      "properties": {
+        "summary": "Task: Develop a simple Python script to calculate Fibonacci sequence up to N. | Result: FAIL | Confidence: 0.25 | Requirements Coverage: 0/3",
+        "importance": 0.25,
+        "tags": [
+          "implementation",
+          "fail"
+        ],
+        "timestamp": "2025-10-31T18:00:37.945537"
+      }
+    },
+    {
+      "id": "procstep:task_123:implementation:3",
+      "label": "ProcedureStep",
+      "properties": {
+        "name": "attempt-3",
+        "actor": "Auditor",
+        "start_ts": "2025-10-31T18:00:37.945537",
+        "status": "fail",
+        "importance": 0.25
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "orderer:Orderer",
+      "target": "selection:328051735e114e0fad8705ebb7406a0b",
+      "label": "MADE_SELECTION",
+      "properties": {}
+    },
+    {
+      "source": "orderer:Orderer",
+      "target": "camper:Team RAG Auditor Campfire:Alice",
+      "label": "CREATED_MEMBER",
+      "properties": {
+        "created_at": "2025-10-31T18:00:07.506691Z"
+      }
+    },
+    {
+      "source": "selection:328051735e114e0fad8705ebb7406a0b",
+      "target": "camper:Team RAG Auditor Campfire:Alice",
+      "label": "ASSIGNED_ROLE",
+      "properties": {
+        "role": "Problem Solver",
+        "rationale": "Selected 3 campers; Roles: Problem Solver x1, Designer x1, Implementer x1; Criteria: roles=['Problem Solver', 'Designer', 'Implementer'], strategy=all_available"
+      }
+    },
+    {
+      "source": "selection:328051735e114e0fad8705ebb7406a0b",
+      "target": "camper:Team RAG Auditor Campfire:Alice",
+      "label": "SELECTED_MEMBER",
+      "properties": {}
+    },
+    {
+      "source": "orderer:Orderer",
+      "target": "camper:Team RAG Auditor Campfire:Bob",
+      "label": "CREATED_MEMBER",
+      "properties": {
+        "created_at": "2025-10-31T18:00:07.506691Z"
+      }
+    },
+    {
+      "source": "selection:328051735e114e0fad8705ebb7406a0b",
+      "target": "camper:Team RAG Auditor Campfire:Bob",
+      "label": "ASSIGNED_ROLE",
+      "properties": {
+        "role": "Designer",
+        "rationale": "Selected 3 campers; Roles: Problem Solver x1, Designer x1, Implementer x1; Criteria: roles=['Problem Solver', 'Designer', 'Implementer'], strategy=all_available"
+      }
+    },
+    {
+      "source": "selection:328051735e114e0fad8705ebb7406a0b",
+      "target": "camper:Team RAG Auditor Campfire:Bob",
+      "label": "SELECTED_MEMBER",
+      "properties": {}
+    },
+    {
+      "source": "orderer:Orderer",
+      "target": "camper:Team RAG Auditor Campfire:Charlie",
+      "label": "CREATED_MEMBER",
+      "properties": {
+        "created_at": "2025-10-31T18:00:07.506691Z"
+      }
+    },
+    {
+      "source": "selection:328051735e114e0fad8705ebb7406a0b",
+      "target": "camper:Team RAG Auditor Campfire:Charlie",
+      "label": "ASSIGNED_ROLE",
+      "properties": {
+        "role": "Implementer",
+        "rationale": "Selected 3 campers; Roles: Problem Solver x1, Designer x1, Implementer x1; Criteria: roles=['Problem Solver', 'Designer', 'Implementer'], strategy=all_available"
+      }
+    },
+    {
+      "source": "selection:328051735e114e0fad8705ebb7406a0b",
+      "target": "camper:Team RAG Auditor Campfire:Charlie",
+      "label": "SELECTED_MEMBER",
+      "properties": {}
+    },
+    {
+      "source": "auditor:TeamAuditor",
+      "target": "finding:task_123:problem_solving:1761933607",
+      "label": "CREATED",
+      "properties": {
+        "attempt": 1
+      }
+    },
+    {
+      "source": "task:task_123",
+      "target": "finding:task_123:problem_solving:1761933607",
+      "label": "HAS_FINDING",
+      "properties": {}
+    },
+    {
+      "source": "stage:problem_solving",
+      "target": "finding:task_123:problem_solving:1761933607",
+      "label": "HAS_FINDING",
+      "properties": {}
+    },
+    {
+      "source": "stage:problem_solving",
+      "target": "procedure:problem_solving",
+      "label": "HAS_PROCEDURE",
+      "properties": {}
+    },
+    {
+      "source": "procedure:problem_solving",
+      "target": "procstep:task_123:problem_solving:1",
+      "label": "HAS_STEP",
+      "properties": {
+        "order_index": 1
+      }
+    },
+    {
+      "source": "procstep:task_123:problem_solving:1",
+      "target": "finding:task_123:problem_solving:1761933607",
+      "label": "GENERATED_FINDING",
+      "properties": {}
+    },
+    {
+      "source": "auditor:TeamAuditor",
+      "target": "finding:task_123:problem_solving:1761933612",
+      "label": "CREATED",
+      "properties": {
+        "attempt": 2
+      }
+    },
+    {
+      "source": "task:task_123",
+      "target": "finding:task_123:problem_solving:1761933612",
+      "label": "HAS_FINDING",
+      "properties": {}
+    },
+    {
+      "source": "stage:problem_solving",
+      "target": "finding:task_123:problem_solving:1761933612",
+      "label": "HAS_FINDING",
+      "properties": {}
+    },
+    {
+      "source": "stage:problem_solving",
+      "target": "procedure:problem_solving",
+      "label": "HAS_PROCEDURE",
+      "properties": {}
+    },
+    {
+      "source": "procedure:problem_solving",
+      "target": "procstep:task_123:problem_solving:2",
+      "label": "HAS_STEP",
+      "properties": {
+        "order_index": 2
+      }
+    },
+    {
+      "source": "procstep:task_123:problem_solving:2",
+      "target": "finding:task_123:problem_solving:1761933612",
+      "label": "GENERATED_FINDING",
+      "properties": {}
+    },
+    {
+      "source": "auditor:TeamAuditor",
+      "target": "finding:task_123:problem_solving:1761933617",
+      "label": "CREATED",
+      "properties": {
+        "attempt": 3
+      }
+    },
+    {
+      "source": "task:task_123",
+      "target": "finding:task_123:problem_solving:1761933617",
+      "label": "HAS_FINDING",
+      "properties": {}
+    },
+    {
+      "source": "stage:problem_solving",
+      "target": "finding:task_123:problem_solving:1761933617",
+      "label": "HAS_FINDING",
+      "properties": {}
+    },
+    {
+      "source": "stage:problem_solving",
+      "target": "procedure:problem_solving",
+      "label": "HAS_PROCEDURE",
+      "properties": {}
+    },
+    {
+      "source": "procedure:problem_solving",
+      "target": "procstep:task_123:problem_solving:3",
+      "label": "HAS_STEP",
+      "properties": {
+        "order_index": 3
+      }
+    },
+    {
+      "source": "procstep:task_123:problem_solving:3",
+      "target": "finding:task_123:problem_solving:1761933617",
+      "label": "GENERATED_FINDING",
+      "properties": {}
+    },
+    {
+      "source": "auditor:TeamAuditor",
+      "target": "finding:task_123:design:1761933617",
+      "label": "CREATED",
+      "properties": {
+        "attempt": 1
+      }
+    },
+    {
+      "source": "task:task_123",
+      "target": "finding:task_123:design:1761933617",
+      "label": "HAS_FINDING",
+      "properties": {}
+    },
+    {
+      "source": "stage:design",
+      "target": "finding:task_123:design:1761933617",
+      "label": "HAS_FINDING",
+      "properties": {}
+    },
+    {
+      "source": "stage:design",
+      "target": "procedure:design",
+      "label": "HAS_PROCEDURE",
+      "properties": {}
+    },
+    {
+      "source": "procedure:design",
+      "target": "procstep:task_123:design:1",
+      "label": "HAS_STEP",
+      "properties": {
+        "order_index": 1
+      }
+    },
+    {
+      "source": "procstep:task_123:design:1",
+      "target": "finding:task_123:design:1761933617",
+      "label": "GENERATED_FINDING",
+      "properties": {}
+    },
+    {
+      "source": "auditor:TeamAuditor",
+      "target": "finding:task_123:design:1761933622",
+      "label": "CREATED",
+      "properties": {
+        "attempt": 2
+      }
+    },
+    {
+      "source": "task:task_123",
+      "target": "finding:task_123:design:1761933622",
+      "label": "HAS_FINDING",
+      "properties": {}
+    },
+    {
+      "source": "stage:design",
+      "target": "finding:task_123:design:1761933622",
+      "label": "HAS_FINDING",
+      "properties": {}
+    },
+    {
+      "source": "stage:design",
+      "target": "procedure:design",
+      "label": "HAS_PROCEDURE",
+      "properties": {}
+    },
+    {
+      "source": "procedure:design",
+      "target": "procstep:task_123:design:2",
+      "label": "HAS_STEP",
+      "properties": {
+        "order_index": 2
+      }
+    },
+    {
+      "source": "procstep:task_123:design:2",
+      "target": "finding:task_123:design:1761933622",
+      "label": "GENERATED_FINDING",
+      "properties": {}
+    },
+    {
+      "source": "auditor:TeamAuditor",
+      "target": "finding:task_123:design:1761933627",
+      "label": "CREATED",
+      "properties": {
+        "attempt": 3
+      }
+    },
+    {
+      "source": "task:task_123",
+      "target": "finding:task_123:design:1761933627",
+      "label": "HAS_FINDING",
+      "properties": {}
+    },
+    {
+      "source": "stage:design",
+      "target": "finding:task_123:design:1761933627",
+      "label": "HAS_FINDING",
+      "properties": {}
+    },
+    {
+      "source": "stage:design",
+      "target": "procedure:design",
+      "label": "HAS_PROCEDURE",
+      "properties": {}
+    },
+    {
+      "source": "procedure:design",
+      "target": "procstep:task_123:design:3",
+      "label": "HAS_STEP",
+      "properties": {
+        "order_index": 3
+      }
+    },
+    {
+      "source": "procstep:task_123:design:3",
+      "target": "finding:task_123:design:1761933627",
+      "label": "GENERATED_FINDING",
+      "properties": {}
+    },
+    {
+      "source": "auditor:TeamAuditor",
+      "target": "finding:task_123:implementation:1761933627",
+      "label": "CREATED",
+      "properties": {
+        "attempt": 1
+      }
+    },
+    {
+      "source": "task:task_123",
+      "target": "finding:task_123:implementation:1761933627",
+      "label": "HAS_FINDING",
+      "properties": {}
+    },
+    {
+      "source": "stage:implementation",
+      "target": "finding:task_123:implementation:1761933627",
+      "label": "HAS_FINDING",
+      "properties": {}
+    },
+    {
+      "source": "stage:implementation",
+      "target": "procedure:implementation",
+      "label": "HAS_PROCEDURE",
+      "properties": {}
+    },
+    {
+      "source": "procedure:implementation",
+      "target": "procstep:task_123:implementation:1",
+      "label": "HAS_STEP",
+      "properties": {
+        "order_index": 1
+      }
+    },
+    {
+      "source": "procstep:task_123:implementation:1",
+      "target": "finding:task_123:implementation:1761933627",
+      "label": "GENERATED_FINDING",
+      "properties": {}
+    },
+    {
+      "source": "auditor:TeamAuditor",
+      "target": "finding:task_123:implementation:1761933632",
+      "label": "CREATED",
+      "properties": {
+        "attempt": 2
+      }
+    },
+    {
+      "source": "task:task_123",
+      "target": "finding:task_123:implementation:1761933632",
+      "label": "HAS_FINDING",
+      "properties": {}
+    },
+    {
+      "source": "stage:implementation",
+      "target": "finding:task_123:implementation:1761933632",
+      "label": "HAS_FINDING",
+      "properties": {}
+    },
+    {
+      "source": "stage:implementation",
+      "target": "procedure:implementation",
+      "label": "HAS_PROCEDURE",
+      "properties": {}
+    },
+    {
+      "source": "procedure:implementation",
+      "target": "procstep:task_123:implementation:2",
+      "label": "HAS_STEP",
+      "properties": {
+        "order_index": 2
+      }
+    },
+    {
+      "source": "procstep:task_123:implementation:2",
+      "target": "finding:task_123:implementation:1761933632",
+      "label": "GENERATED_FINDING",
+      "properties": {}
+    },
+    {
+      "source": "auditor:TeamAuditor",
+      "target": "finding:task_123:implementation:1761933637",
+      "label": "CREATED",
+      "properties": {
+        "attempt": 3
+      }
+    },
+    {
+      "source": "task:task_123",
+      "target": "finding:task_123:implementation:1761933637",
+      "label": "HAS_FINDING",
+      "properties": {}
+    },
+    {
+      "source": "stage:implementation",
+      "target": "finding:task_123:implementation:1761933637",
+      "label": "HAS_FINDING",
+      "properties": {}
+    },
+    {
+      "source": "stage:implementation",
+      "target": "procedure:implementation",
+      "label": "HAS_PROCEDURE",
+      "properties": {}
+    },
+    {
+      "source": "procedure:implementation",
+      "target": "procstep:task_123:implementation:3",
+      "label": "HAS_STEP",
+      "properties": {
+        "order_index": 3
+      }
+    },
+    {
+      "source": "procstep:task_123:implementation:3",
+      "target": "finding:task_123:implementation:1761933637",
+      "label": "GENERATED_FINDING",
+      "properties": {}
+    }
+  ],
+  "metadata": {
+    "subject": "Develop a simple Python script to calculate Fibonacci sequence up to N.",
+    "solution_summary": "Python function to compute Fibonacci up to N with simple iteration",
+    "generated_at": "2025-10-31T18:00:37.950637Z",
+    "process_flows": {
+      "problem_solving": [
+        {
+          "id": "finding:task_123:problem_solving:1761933607",
+          "summary": "Task: Develop a simple Python script to calculate Fibonacci sequence up to N. | Result: FAIL | Confidence: 0.25 | Requirements Coverage: 0/3",
+          "timestamp": "2025-10-31T18:00:07.789961",
+          "result": "fail",
+          "importance": 0.25
+        },
+        {
+          "id": "finding:task_123:problem_solving:1761933612",
+          "summary": "Task: Develop a simple Python script to calculate Fibonacci sequence up to N. | Result: FAIL | Confidence: 0.25 | Requirements Coverage: 0/3",
+          "timestamp": "2025-10-31T18:00:12.805969",
+          "result": "fail",
+          "importance": 0.25
+        },
+        {
+          "id": "finding:task_123:problem_solving:1761933617",
+          "summary": "Task: Develop a simple Python script to calculate Fibonacci sequence up to N. | Result: FAIL | Confidence: 0.25 | Requirements Coverage: 0/3",
+          "timestamp": "2025-10-31T18:00:17.820339",
+          "result": "fail",
+          "importance": 0.25
+        }
+      ],
+      "design": [
+        {
+          "id": "finding:task_123:design:1761933617",
+          "summary": "Task: Develop a simple Python script to calculate Fibonacci sequence up to N. | Result: FAIL | Confidence: 0.25 | Requirements Coverage: 0/3",
+          "timestamp": "2025-10-31T18:00:17.838978",
+          "result": "fail",
+          "importance": 0.25
+        },
+        {
+          "id": "finding:task_123:design:1761933622",
+          "summary": "Task: Develop a simple Python script to calculate Fibonacci sequence up to N. | Result: FAIL | Confidence: 0.25 | Requirements Coverage: 0/3",
+          "timestamp": "2025-10-31T18:00:22.856903",
+          "result": "fail",
+          "importance": 0.25
+        },
+        {
+          "id": "finding:task_123:design:1761933627",
+          "summary": "Task: Develop a simple Python script to calculate Fibonacci sequence up to N. | Result: FAIL | Confidence: 0.25 | Requirements Coverage: 0/3",
+          "timestamp": "2025-10-31T18:00:27.885932",
+          "result": "fail",
+          "importance": 0.25
+        }
+      ],
+      "implementation": [
+        {
+          "id": "finding:task_123:implementation:1761933627",
+          "summary": "Task: Develop a simple Python script to calculate Fibonacci sequence up to N. | Result: FAIL | Confidence: 0.25 | Requirements Coverage: 0/3",
+          "timestamp": "2025-10-31T18:00:27.899714",
+          "result": "fail",
+          "importance": 0.25
+        },
+        {
+          "id": "finding:task_123:implementation:1761933632",
+          "summary": "Task: Develop a simple Python script to calculate Fibonacci sequence up to N. | Result: FAIL | Confidence: 0.25 | Requirements Coverage: 0/3",
+          "timestamp": "2025-10-31T18:00:32.919026",
+          "result": "fail",
+          "importance": 0.25
+        },
+        {
+          "id": "finding:task_123:implementation:1761933637",
+          "summary": "Task: Develop a simple Python script to calculate Fibonacci sequence up to N. | Result: FAIL | Confidence: 0.25 | Requirements Coverage: 0/3",
+          "timestamp": "2025-10-31T18:00:37.945537",
+          "result": "fail",
+          "importance": 0.25
+        }
+      ]
+    },
+    "procedures": {
+      "problem_solving": {
+        "procedure_id": "procedure:problem_solving",
+        "steps": [
+          {
+            "id": "procstep:task_123:problem_solving:1",
+            "name": "attempt-1",
+            "actor": "Auditor",
+            "start_ts": "2025-10-31T18:00:07.789961",
+            "status": "fail",
+            "importance": 0.25,
+            "finding_id": "finding:task_123:problem_solving:1761933607"
+          },
+          {
+            "id": "procstep:task_123:problem_solving:2",
+            "name": "attempt-2",
+            "actor": "Auditor",
+            "start_ts": "2025-10-31T18:00:12.805969",
+            "status": "fail",
+            "importance": 0.25,
+            "finding_id": "finding:task_123:problem_solving:1761933612"
+          },
+          {
+            "id": "procstep:task_123:problem_solving:3",
+            "name": "attempt-3",
+            "actor": "Auditor",
+            "start_ts": "2025-10-31T18:00:17.820339",
+            "status": "fail",
+            "importance": 0.25,
+            "finding_id": "finding:task_123:problem_solving:1761933617"
+          }
+        ]
+      },
+      "design": {
+        "procedure_id": "procedure:design",
+        "steps": [
+          {
+            "id": "procstep:task_123:design:1",
+            "name": "attempt-1",
+            "actor": "Auditor",
+            "start_ts": "2025-10-31T18:00:17.838978",
+            "status": "fail",
+            "importance": 0.25,
+            "finding_id": "finding:task_123:design:1761933617"
+          },
+          {
+            "id": "procstep:task_123:design:2",
+            "name": "attempt-2",
+            "actor": "Auditor",
+            "start_ts": "2025-10-31T18:00:22.856903",
+            "status": "fail",
+            "importance": 0.25,
+            "finding_id": "finding:task_123:design:1761933622"
+          },
+          {
+            "id": "procstep:task_123:design:3",
+            "name": "attempt-3",
+            "actor": "Auditor",
+            "start_ts": "2025-10-31T18:00:27.885932",
+            "status": "fail",
+            "importance": 0.25,
+            "finding_id": "finding:task_123:design:1761933627"
+          }
+        ]
+      },
+      "implementation": {
+        "procedure_id": "procedure:implementation",
+        "steps": [
+          {
+            "id": "procstep:task_123:implementation:1",
+            "name": "attempt-1",
+            "actor": "Auditor",
+            "start_ts": "2025-10-31T18:00:27.899714",
+            "status": "fail",
+            "importance": 0.25,
+            "finding_id": "finding:task_123:implementation:1761933627"
+          },
+          {
+            "id": "procstep:task_123:implementation:2",
+            "name": "attempt-2",
+            "actor": "Auditor",
+            "start_ts": "2025-10-31T18:00:32.919026",
+            "status": "fail",
+            "importance": 0.25,
+            "finding_id": "finding:task_123:implementation:1761933632"
+          },
+          {
+            "id": "procstep:task_123:implementation:3",
+            "name": "attempt-3",
+            "actor": "Auditor",
+            "start_ts": "2025-10-31T18:00:37.945537",
+            "status": "fail",
+            "importance": 0.25,
+            "finding_id": "finding:task_123:implementation:1761933637"
+          }
+        ]
+      }
+    }
+  }
+}

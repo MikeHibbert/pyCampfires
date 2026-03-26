@@ -1,0 +1,1 @@
+Design RAG: Focus on algorithm choice, data structures, and modularity. Pseudocode is helpful.

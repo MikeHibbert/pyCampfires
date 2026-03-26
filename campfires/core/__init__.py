@@ -142,6 +142,15 @@ from .torch_rules import (
     create_routing_rule
 )
 
+from .event_bus import EventBus, Event
+from .security_hooks import SecurityHooks, SecurityHookResult
+from .routing_strategy import RoutingStrategy, BasicRuleBasedRouting, TargetDecision
+from .session_manager import SessionManager, InMemorySessionManager
+from .tool_adapter import ToolAdapter
+from .scheduler import AsyncScheduler
+from .provider_registry import ProviderRegistry
+from .channel_adapter import ChannelAdapter, ChannelEvent, SendResult
+
 __all__ = [
     # Original core components
     "Torch", 
@@ -250,4 +259,20 @@ __all__ = [
     "TorchRulesEngine",
     "create_simple_rule",
     "create_routing_rule"
+,
+    "EventBus",
+    "Event",
+    "SecurityHooks",
+    "SecurityHookResult",
+    "RoutingStrategy",
+    "BasicRuleBasedRouting",
+    "TargetDecision",
+    "SessionManager",
+    "InMemorySessionManager",
+    "ToolAdapter",
+    "AsyncScheduler",
+    "ProviderRegistry",
+    "ChannelAdapter",
+    "ChannelEvent",
+    "SendResult"
 ]

@@ -152,6 +152,15 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
+## Voice Ingest Integration (CampfireValley)
+
+When used with the CampfireValley web server, the voice ingest endpoint supports audio uploads and transcription:
+
+- Clients may send `text` directly or provide `audio_base64` / `audio_url`
+- The server will transcribe audio if `text` is empty or a placeholder (e.g., “voice sample”)
+- This guarantees the LLM receives the actual transcript derived from audio
+
+For a desktop Tray Agent integration (PTT recorder, local STT, TTS reply playback, output device routing), see the CampfireValley repository’s Tray Agent.
 ### Crisis Detection Example
 
 ```python

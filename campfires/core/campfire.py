@@ -16,6 +16,10 @@ from ..mcp.protocol import MCPMessage, MCPProtocol
 from .orderer import Orderer, OrdererConfig
 from .team_auditor import TeamAuditor, TeamAuditorConfig
 from .graph_store import GraphStore
+from .event_bus import EventBus
+from .security_hooks import SecurityHooks
+from .routing_strategy import RoutingStrategy, TargetDecision
+from .session_manager import InMemorySessionManager, SessionManager
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +41,11 @@ class Campfire:
         mcp_protocol: Optional[MCPProtocol] = None,
         graph_store: Optional[GraphStore] = None,
         mode: str = "default", # New parameter for different modes
-        config: Optional[Dict[str, Any]] = None
+        config: Optional[Dict[str, Any]] = None,
+        event_bus: Optional[EventBus] = None,
+        security_hooks: Optional[SecurityHooks] = None,
+        routing_strategy: Optional[RoutingStrategy] = None,
+        session_manager: Optional[SessionManager] = None
     ):
         """
         Initialize a Campfire.
@@ -57,6 +65,10 @@ class Campfire:
         self.mode = mode
         self.config = config or {}
         self.graph_store = graph_store
+        self.event_bus = event_bus or EventBus()
+        self.security_hooks = security_hooks or SecurityHooks()
+        self.routing_strategy = routing_strategy
+        self.session_manager = session_manager or InMemorySessionManager()
 
         self.orderer: Optional[Orderer] = None
         if self.mode == "team_rag":
@@ -99,6 +111,14 @@ class Campfire:
         
         self.is_running = True
         logger.info(f"Starting campfire: {self.name}")
+        try:
+            await self.event_bus.start()
+        except Exception:
+            pass
+        try:
+            await self.event_bus.publish("campfire_started", {"name": self.name})
+        except Exception:
+            pass
         
         # Start processing tasks
         tasks = []
@@ -128,6 +148,14 @@ class Campfire:
         Stop the campfire processing."""
         logger.info(f"Stopping campfire: {self.name}")
         self.is_running = False
+        try:
+            await self.event_bus.publish("campfire_stopped", {"name": self.name})
+        except Exception:
+            pass
+        try:
+            await self.event_bus.stop()
+        except Exception:
+            pass
         
         # Cancel any pending tasks
         for task in asyncio.all_tasks():
@@ -167,7 +195,17 @@ class Campfire:
                             result_torch.channel = result_torch.channel or torch.channel or self.name
                             result_torch.metadata['processed_by'] = camper.__class__.__name__
                             result_torch.metadata['parent_torch_id'] = torch.torch_id
-                            
+                            try:
+                                if self.routing_strategy:
+                                    decision = await self.routing_strategy.choose_target(result_torch, None)
+                                    if decision and decision.channel:
+                                        result_torch.channel = decision.channel
+                                        try:
+                                            await self.event_bus.publish("routing_decision", {"campfire": self.name, "torch_id": result_torch.torch_id, "channel": decision.channel})
+                                        except Exception:
+                                            pass
+                            except Exception:
+                                pass
                             output_torches.append(result_torch)
                             
                             # Send via MCP if available
@@ -178,6 +216,10 @@ class Campfire:
                     logger.error(f"Error processing torch with {camper.__class__.__name__}: {e}")
                     if self.on_error:
                         self.on_error(e, torch)
+                    try:
+                        await self.event_bus.publish("error", {"campfire": self.name, "message": str(e)})
+                    except Exception:
+                        pass
                     continue
             
             # Store processed torch
@@ -194,6 +236,10 @@ class Campfire:
             logger.error(f"Error processing torch {torch.torch_id}: {e}")
             if self.on_error:
                 self.on_error(e, torch)
+            try:
+                await self.event_bus.publish("error", {"campfire": self.name, "message": str(e)})
+            except Exception:
+                pass
             return []
     
     async def add_torch(self, torch: Torch) -> None:
@@ -203,8 +249,23 @@ class Campfire:
         Args:
             torch: Torch to add to queue
         """
-        await self.torch_queue.put(torch)
-        logger.debug(f"Added torch {torch.torch_id} to queue")
+        try:
+            res = await self.security_hooks.pre_receive_torch(torch, {"campfire": self.name})
+            if res.action == "reject":
+                try:
+                    await self.event_bus.publish("torch_rejected", {"campfire": self.name, "torch_id": torch.torch_id, "reason": res.reason})
+                except Exception:
+                    pass
+                return
+            new_torch = res.torch or torch
+        except Exception:
+            new_torch = torch
+        await self.torch_queue.put(new_torch)
+        logger.debug(f"Added torch {new_torch.torch_id} to queue")
+        try:
+            await self.event_bus.publish("torch_received", {"campfire": self.name, "torch_id": new_torch.torch_id})
+        except Exception:
+            pass
     
     async def _processing_loop(self) -> None:
         """
@@ -220,6 +281,10 @@ class Campfire:
                 logger.error(f"Error in processing loop: {e}")
                 if self.on_error:
                     self.on_error(e, None) # Pass None for torch if not available
+                try:
+                    await self.event_bus.publish("error", {"campfire": self.name, "message": str(e)})
+                except Exception:
+                    pass
     
     async def _cleanup_loop(self) -> None:
         """
@@ -251,9 +316,17 @@ class Campfire:
             logger.info(f"Subscribed to MCP channel: campfire.{self.name}.in")
     
     async def _send_torch_via_mcp(self, torch: Torch):
-        if self.mcp_protocol and self.mcp_protocol.is_running():
+        if self.mcp_protocol and getattr(self.mcp_protocol, "is_running", False):
             try:
-                await self.mcp_protocol.send_torch(torch)
+                res = await self.security_hooks.pre_send_torch(torch, {"campfire": self.name})
+                if res.action == "reject":
+                    return
+                out_torch = res.torch or torch
+                await self.mcp_protocol.send_torch(out_torch)
+                try:
+                    await self.event_bus.publish("torch_sent", {"campfire": self.name, "torch_id": out_torch.torch_id, "channel": out_torch.channel})
+                except Exception:
+                    pass
             except Exception as e:
                 logger.error(f"Failed to send torch {torch.torch_id} via MCP: {e}")
         else:
