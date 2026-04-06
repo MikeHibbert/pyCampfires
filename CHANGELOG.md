@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.4.3] - 2026-03-26
+
+### Added
+- Core contracts for extensibility:
+  - EventBus (runtime event pub/sub)
+  - SecurityHooks (pre_receive/pre_send allow/transform/reject)
+  - RoutingStrategy interface
+  - SessionManager with InMemorySessionManager
+  - ToolAdapter and AsyncScheduler
+  - ProviderRegistry with failover hook
+  - ChannelAdapter, ChannelEvent, SendResult
+- Developer documentation: docs/extending_campfires.md
+- Inspiration plan: Voice_Interactive_Pathway.markdown
+
+### Changed
+- Campfire pipeline emits events and invokes security hooks; optional routing strategy steers outbound channels.
+
+### Notes
+- Backward compatible; minor APIs added to enable enterprise capabilities in downstream systems.
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),

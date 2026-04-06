@@ -1,32 +1,29 @@
 from typing import Any, Dict, Optional
-from dataclasses import dataclass
 
 
-@dataclass
 class ChannelEvent:
-    event_id: str
-    type: str
-    payload: Dict[str, Any]
-    metadata: Dict[str, Any] = None
+    def __init__(self, event_type: str, data: Dict[str, Any], channel: Optional[str] = None):
+        self.event_type = event_type
+        self.data = data
+        self.channel = channel
 
 
-@dataclass
 class SendResult:
-    success: bool
-    event_id: Optional[str] = None
-    error: Optional[str] = None
-    metadata: Dict[str, Any] = None
+    def __init__(self, ok: bool, message_id: Optional[str] = None, error: Optional[str] = None):
+        self.ok = ok
+        self.message_id = message_id
+        self.error = error
 
 
 class ChannelAdapter:
     async def connect(self, config: Dict[str, Any]) -> None:
         return None
 
-    async def receive(self) -> ChannelEvent:
-        raise NotImplementedError
+    async def receive(self) -> Optional[ChannelEvent]:
+        return None
 
     async def send(self, target: str, message: Dict[str, Any]) -> SendResult:
-        raise NotImplementedError
+        return SendResult(ok=True)
 
     async def ack(self, event_id: str) -> None:
         return None
